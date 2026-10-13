@@ -36,7 +36,7 @@ body:
     attributes:
       label: Desktop GIFs version
       description: "Shown on the extension's card in `chrome://extensions` or `about:addons`."
-      placeholder: "0.1.1"
+      placeholder: "0.1.2"
     validations:
       required: true
   - type: dropdown
