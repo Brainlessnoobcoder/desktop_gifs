@@ -124,9 +124,15 @@
       const feedback = json.actionResult && json.actionResult.feedbackText && json.actionResult.feedbackText.runs
         ? json.actionResult.feedbackText.runs.map((r) => r.text).join('')
         : '';
-      // YouTube can turn a comment down with HTTP 200 and no message of its own.
+      // YouTube only takes GIFs that Tenor rates G. For any other GIF a reply
+      // gets HTTP 400 INVALID_ARGUMENT, and a comment gets HTTP 200 with a
+      // showErrorAction where the actionResult would be. The page's own request
+      // was valid before the GIF was added, so both of these mean the GIF.
+      const refused = response.ok ? !json.actionResult : !!json.error && json.error.status === 'INVALID_ARGUMENT';
       const fallback = response.ok ? 'YouTube did not accept this GIF comment. Nothing was posted.' : `YouTube returned HTTP ${response.status}.`;
-      const error = ok ? null : (json.error && json.error.message) || feedback || fallback;
+      const error = ok ? null
+        : refused ? 'YouTube does not accept this GIF. Try a different one. Nothing was posted.'
+        : (json.error && json.error.message) || feedback || fallback;
       toContent({ type: 'result', nonce, ok, error });
     } catch (e) {
       toContent({ type: 'result', nonce, ok: response.ok, error: response.ok ? null : `YouTube returned HTTP ${response.status}.` });

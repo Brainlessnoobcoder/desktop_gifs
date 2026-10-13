@@ -103,6 +103,8 @@ The picker opens with Tenor's featured GIFs. To find another one:
 | "The page hook is not running" or "The extension was reloaded" | Refresh the YouTube tab. |
 | "Press Comment to send the GIF" | YouTube did not send the comment by itself. Press its Comment button. |
 | The post fails | Nothing is published and your text stays in the box. Try again. |
+| "YouTube does not accept this GIF" | YouTube only takes GIFs that Tenor rates G, its rating for all audiences. The picker leaves the others out, but one can get through when Tenor's ratings cannot be read. Pick a different GIF. |
+| "YouTube only takes GIFs that Tenor rates G" | The link you pasted points at a GIF with another rating. Pick a different GIF. |
 | "YouTube did not accept this GIF comment" | YouTube turned the comment down without giving a reason. Try another GIF or another video. |
 | Search finds nothing in Firefox | Open `about:addons`, select Desktop GIFs, and check under **Permissions** that access to `tenor.com` is on. |
 | "Manifest file is missing or unreadable" | The wrong folder was chosen. Choose the folder that has `manifest.json` directly inside it. |
@@ -112,7 +114,9 @@ The picker opens with Tenor's featured GIFs. To find another one:
 ## Limits
 
 - **Unofficial.** This project is not affiliated with YouTube, Google or Tenor. It sends a field that YouTube's desktop site does not use itself, so it can stop working whenever YouTube changes something, and using it is at your own risk under YouTube's Terms of Service.
-- **Tenor only.** YouTube's GIF comments take Tenor GIFs, so a GIF file from your computer cannot be posted. Tenor closed its public API in June 2026, so search results are read from Tenor's web pages and will break if those pages change. Pasting a link keeps working without search.
+- **Tenor only.** YouTube's GIF comments take Tenor GIFs, so a GIF file from your computer cannot be posted.
+- **G-rated GIFs only.** YouTube turns down every GIF that Tenor does not rate G, so the picker shows only those, and a pasted link to any other GIF is not offered.
+- **Search depends on Tenor's website.** Tenor closed its public API in June 2026. Search and ratings come from the API that tenor.com itself uses, with the key its pages carry, and fall back to the results in Tenor's web pages, which have no ratings. Either can break when Tenor changes its site.
 - **GIFs only.** Stickers and still images are left out of the results.
 - **New comments and replies only.** You cannot add a GIF while editing a comment or writing a channel post.
 
@@ -124,13 +128,13 @@ When you pick a GIF, the content script adds a one-time marker to the comment bo
 | --- | --- | --- |
 | `src/content.js`, `src/content.css` | YouTube page, isolated world | Adds the GIF button and the picker |
 | `src/main.js` | YouTube page, main world | Rewrites the comment request so it carries the GIF |
-| `src/sw.js` | Service worker (background script in Firefox) | Fetches search results from tenor.com; on install, adds the two scripts above to YouTube tabs that are already open |
+| `src/sw.js` | Service worker (background script in Firefox) | Fetches G-rated search results from Tenor; on install, adds the two scripts above to YouTube tabs that are already open |
 
 There is no build step and there are no dependencies: the `extension` folder is the extension. `python3 tools/package.py` writes the two release ZIPs, which are that folder with the other browser's background key taken out of the manifest.
 
 ## Privacy
 
-- **Two sites, nothing else:** `youtube.com`, where it adds the button, and `tenor.com`, for search.
+- **YouTube and Tenor, nothing else:** `youtube.com`, where it adds the button, and for search `tenor.com` and Tenor's API at `tenor.googleapis.com`.
 - **Nothing collected.** No analytics, no storage, no account.
 - **Search goes to Tenor without your cookies**, and GIF previews load from Tenor's media servers.
 - **Your YouTube credentials are never read.** YouTube's own page sends the comment.
