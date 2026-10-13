@@ -15,6 +15,7 @@
   const ARM_TIMEOUT_MS = 1500;
   const AUTO_SUBMIT_GRACE_MS = 4000;
   const RESULT_TIMEOUT_MS = 20000;
+  const NO_FAVORITES = 'No favorites yet. Point at a GIF and click its star.';
 
   const PICKER_CSS = `
     :host { all: initial; position: fixed; z-index: 2147483647; }
@@ -31,14 +32,20 @@
       --bg: #212121; --fg: #f1f1f1; --muted: #aaa; --line: rgba(255,255,255,.14); --field: rgba(255,255,255,.08); --accent: #3ea6ff; --err: #ff7b7b;
       --thumb: rgba(255,255,255,.25); --thumb-hover: rgba(255,255,255,.45);
     }
-    .search { flex: none; padding: 8px; border-bottom: 1px solid var(--line); }
+    .search { flex: none; display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); }
     input {
-      box-sizing: border-box; width: 100%; height: 34px; padding: 0 12px;
+      box-sizing: border-box; flex: 1; min-width: 0; height: 34px; padding: 0 12px;
       border: 1px solid transparent; border-radius: 17px; outline: none;
       background: var(--field); color: var(--fg); font: inherit;
     }
     input:focus { border-color: var(--accent); }
     input::placeholder { color: var(--muted); }
+    .fav-tab {
+      flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%;
+      background: var(--field); color: var(--muted); font: 16px/1 Arial, sans-serif; cursor: pointer;
+    }
+    .fav-tab[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+    .fav-tab:focus-visible, .star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     .status { flex: none; padding: 6px 12px 0; color: var(--muted); }
     .status:empty { display: none; }
     .status[data-kind="error"] { color: var(--err); }
@@ -66,7 +73,15 @@
     .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     .tile:hover img { opacity: .82; }
     .tile img { display: block; width: 100%; height: auto; }
-    .panel[data-busy] .tile { pointer-events: none; opacity: .45; }
+    /* The star is the tile's sibling, not its child: a button cannot hold another button. */
+    .cell { position: relative; }
+    .star {
+      position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%;
+      background: rgba(0,0,0,.6); color: #fff; font: 16px/1 Arial, sans-serif; cursor: pointer; opacity: 0;
+    }
+    .cell:hover .star, .star:focus-visible, .star[aria-pressed="true"] { opacity: 1; }
+    .star[aria-pressed="true"] { color: #ffd45c; }
+    .panel[data-busy] .cell { pointer-events: none; opacity: .45; }
   `;
 
   // ---------------------------------------------------------------- page hook
@@ -128,7 +143,7 @@
 
   // ------------------------------------------------------------------ picker
 
-  const picker = { open: false, busy: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null };
+  const picker = { open: false, busy: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null, favorites: [], showingFavorites: false };
 
   function buildPicker() {
     const host = document.createElement('div');
@@ -151,7 +166,14 @@
     input.setAttribute('aria-label', 'Search Tenor or paste a Tenor link');
     input.autocomplete = 'off';
     input.spellcheck = false;
-    search.append(input);
+    const favTab = document.createElement('button');
+    favTab.type = 'button';
+    favTab.className = 'fav-tab';
+    favTab.textContent = '★';
+    favTab.title = 'Favorites';
+    favTab.setAttribute('aria-label', 'Favorites');
+    favTab.setAttribute('aria-pressed', 'false');
+    search.append(input, favTab);
 
     const status = document.createElement('div');
     status.className = 'status';
@@ -167,13 +189,23 @@
       clearTimeout(picker.timer);
       picker.timer = setTimeout(() => load(input.value), SEARCH_DEBOUNCE_MS);
     });
+    favTab.addEventListener('click', () => {
+      if (picker.showingFavorites) { load(input.value); return; }
+      // A search that is waiting or under way must not replace the favorites.
+      clearTimeout(picker.timer);
+      picker.seq++;
+      setFavoritesView(true);
+      renderFavorites(false);
+    });
     grid.addEventListener('click', (e) => {
+      const star = e.target.closest('.star');
       const tile = e.target.closest('.tile');
-      if (tile && !picker.busy) send(picker.gifs[Number(tile.dataset.index)]);
+      if (star) toggleFavorite(picker.gifs[Number(star.dataset.index)]);
+      else if (tile && !picker.busy) send(picker.gifs[Number(tile.dataset.index)]);
     });
 
     picker.host = host;
-    picker.els = { panel, input, status, grid };
+    picker.els = { panel, input, status, grid, favTab };
   }
 
   function setStatus(text, kind) {
@@ -230,6 +262,7 @@
   async function load(raw) {
     const text = raw.trim();
     const seq = ++picker.seq;
+    setFavoritesView(false);
     setStatus(text ? 'Searching…' : 'Loading…');
     let reply;
     try {
@@ -258,6 +291,8 @@
       return { el: col, height: 0 };
     });
     gifs.forEach((gif, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
       const tile = document.createElement('button');
       tile.type = 'button';
       tile.className = 'tile';
@@ -271,12 +306,67 @@
       img.loading = 'lazy';
       img.referrerPolicy = 'no-referrer';
       tile.append(img);
+      const star = document.createElement('button');
+      star.type = 'button';
+      star.className = 'star';
+      star.dataset.index = String(i);
+      setStar(star, gif);
+      cell.append(tile, star);
       const col = cols[0].height <= cols[1].height ? cols[0] : cols[1];
-      col.el.append(tile);
+      col.el.append(cell);
       col.height += gif.height / gif.width;
     });
     picker.els.grid.replaceChildren(...cols.map((c) => c.el));
     picker.els.grid.scrollTop = 0;
+  }
+
+  // --------------------------------------------------------------- favorites
+
+  function setFavoritesView(on) {
+    picker.showingFavorites = on;
+    picker.els.favTab.setAttribute('aria-pressed', String(on));
+  }
+
+  function setStar(star, gif) {
+    const on = picker.favorites.some((f) => f.id === gif.id);
+    star.textContent = on ? '★' : '☆';
+    star.title = on ? 'Remove from favorites' : 'Add to favorites';
+    star.setAttribute('aria-label', star.title);
+    star.setAttribute('aria-pressed', String(on));
+  }
+
+  function renderFavorites(keepScroll) {
+    const top = keepScroll ? picker.els.grid.scrollTop : 0;
+    render(picker.favorites);
+    picker.els.grid.scrollTop = top;
+    setStatus(picker.favorites.length ? '' : NO_FAVORITES);
+  }
+
+  // Takes the stored list, on load and whenever any tab changes it, so every
+  // tab works on the same list and none writes back an old copy.
+  function useFavorites(stored) {
+    picker.favorites = (Array.isArray(stored) ? stored : []).filter((g) => g
+      && typeof g.id === 'string' && typeof g.title === 'string' && typeof g.preview === 'string'
+      && g.width > 0 && g.height > 0);
+    if (!picker.open || picker.busy) return;
+    if (picker.showingFavorites) renderFavorites(true);
+    else for (const star of picker.els.grid.querySelectorAll('.star')) setStar(star, picker.gifs[Number(star.dataset.index)]);
+  }
+
+  chrome.storage.local.get('favorites').then((items) => useFavorites(items.favorites));
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.favorites) useFavorites(changes.favorites.newValue);
+  });
+
+  // Only writes the list; the change listener above then shows it, here and
+  // in every other tab.
+  async function toggleFavorite(gif) {
+    const rest = picker.favorites.filter((f) => f.id !== gif.id);
+    try {
+      await chrome.storage.local.set({ favorites: rest.length < picker.favorites.length ? rest : [gif, ...rest] });
+    } catch (e) {
+      setStatus('The favorite could not be saved. Refresh this page.', 'error');
+    }
   }
 
   // ----------------------------------------------------------------- posting
@@ -402,7 +492,7 @@
       if (e.key === 'Escape') {
         e.preventDefault();
         closePicker();
-      } else if (e.key === 'Enter' && picker.gifs.length === 1 && !picker.busy) {
+      } else if (e.key === 'Enter' && e.composedPath()[0] === picker.els.input && picker.gifs.length === 1 && !picker.busy) {
         e.preventDefault();
         send(picker.gifs[0]);
       }

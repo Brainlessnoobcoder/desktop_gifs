@@ -38,6 +38,7 @@ YouTube's mobile app can attach a GIF to a comment; the desktop site has no butt
 - **Everyone sees your GIF.** It is posted as an ordinary YouTube GIF comment, so viewers do not need the extension.
 - **Three clicks.** Open a comment box, click **GIF**, click the one you want.
 - **Search or paste.** Search Tenor, or paste a Tenor link.
+- **Favorites.** Star the GIFs you use often and find them behind one button.
 - **Nothing to set up.** No account, no API key, no tracking.
 
 <sub>The screenshots show the extension's own interface on a test page that stands in for YouTube's comment box.</sub>
@@ -89,9 +90,11 @@ The picker opens with Tenor's featured GIFs. To find another one:
 - type to search Tenor, or
 - paste a Tenor link: a `tenor.com/view/…` page, a `media.tenor.com` file, or a bare Tenor ID.
 
+To keep a GIF, point at it and click the star in its corner. The **★** button next to the search field shows your favorites; click it again to go back to the search. Click a favorite's star to remove it. Favorites are shared by all your YouTube tabs and are still there after a browser restart, in Firefox too, once the add-on is loaded again. Removing the extension from the browser deletes them.
+
 | Key | What it does |
 | --- | --- |
-| <kbd>Enter</kbd> | Posts the GIF when the picker shows exactly one result, as it does after pasting a link |
+| <kbd>Enter</kbd> | In the search field, posts the GIF when the picker shows exactly one, as it does after pasting a link |
 | <kbd>Esc</kbd> | Closes the picker |
 
 ## Troubleshooting
@@ -135,7 +138,8 @@ There is no build step and there are no dependencies: the `extension` folder is 
 ## Privacy
 
 - **YouTube and Tenor, nothing else:** `youtube.com`, where it adds the button, and for search `tenor.com` and Tenor's API at `tenor.googleapis.com`.
-- **Nothing collected.** No analytics, no storage, no account.
+- **Nothing collected.** No analytics, no account.
+- **Favorites stay in your browser.** They are kept in the extension's own local storage and are not sent anywhere.
 - **Search goes to Tenor without your cookies**, and GIF previews load from Tenor's media servers.
 - **Your YouTube credentials are never read.** YouTube's own page sends the comment.
 
