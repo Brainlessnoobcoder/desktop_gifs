@@ -2,6 +2,11 @@
 // shows the picker, and hands the chosen GIF to the page-world hook (main.js)
 // by submitting a one-time marker through YouTube's own comment box.
 (() => {
+  // sw.js also injects this file into tabs that were open before the install;
+  // a tab must not end up with two copies.
+  if (globalThis.gcfyLoaded) return;
+  globalThis.gcfyLoaded = true;
+
   const BOX_SCOPE = 'ytd-comment-simplebox-renderer, ytd-comment-thread-renderer';
   const POST_DIALOG = 'ytd-backstage-post-dialog-renderer';
   const PICKER_W = 340;
@@ -118,6 +123,8 @@
     scanQueued = true;
     requestAnimationFrame(scan);
   }).observe(document.documentElement, { childList: true, subtree: true });
+  // Comment boxes that are already there when this file is injected late.
+  scan();
 
   // ------------------------------------------------------------------ picker
 
@@ -334,6 +341,7 @@
     let seen = false;
     fromMain.set(nonce, (msg) => {
       if (msg.type === 'armed') armedAck(true);
+      else if (msg.type === 'refused') armedAck('refused');
       else if (msg.type === 'seen') seen = true;
       else if (msg.type === 'result') settle(msg);
     });
@@ -345,8 +353,10 @@
       // Without the page hook the marker would be posted as plain text, so
       // nothing is typed into the box until the hook has answered.
       const armed = await Promise.race([armedPromise, sleep(ARM_TIMEOUT_MS).then(() => false)]);
-      if (!armed) {
-        setStatus('The page hook is not running. Refresh this page and try again.', 'error');
+      if (armed !== true) {
+        setStatus(armed === 'refused'
+          ? 'Not ready in this tab yet. Try again in a few seconds, or refresh this page.'
+          : 'The page hook is not running. Refresh this page and try again.', 'error');
         return;
       }
 

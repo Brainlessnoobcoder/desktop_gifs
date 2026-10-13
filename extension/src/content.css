@@ -21,14 +21,16 @@ html[dark] .gcfy-btn {
   color: #f1f1f1;
 }
 
-/* icons/icon.svg is used as a mask so it takes the button's text colour. */
+/* A copy of icons/icon.svg, used as a mask so it takes the button's text
+   colour. It is inlined because the extension's own URL differs per browser. */
 .gcfy-btn::before {
+  --gcfy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='5.5' width='20' height='13' rx='3.5' stroke-width='1.5'/%3E%3Cpath stroke-width='1.25' d='M9.85 10.35C9.45 9.75 8.9 9.4 8.25 9.4c-1.1 0-1.8 1.05-1.8 2.6s.7 2.6 1.8 2.6 1.8-.75 1.8-1.9v-.4H8.5M12.35 9.4v5.2M14.65 14.6V9.4h2.9M14.65 12.15H17'/%3E%3C/svg%3E");
   content: "";
   width: 24px;
   height: 24px;
   background-color: currentColor;
-  -webkit-mask: url("chrome-extension://__MSG_@@extension_id__/icons/icon.svg") center / contain no-repeat;
-  mask: url("chrome-extension://__MSG_@@extension_id__/icons/icon.svg") center / contain no-repeat;
+  -webkit-mask: var(--gcfy-icon) center / contain no-repeat;
+  mask: var(--gcfy-icon) center / contain no-repeat;
 }
 
 .gcfy-btn:hover,

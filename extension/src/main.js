@@ -6,9 +6,16 @@
 // page submit it. That way the page supplies the auth headers, context and
 // attestation. The hook strips the marker and adds the GIF in its place.
 (() => {
+  // sw.js also injects this file into tabs that were open before the install;
+  // a page must not end up with two wrappers.
+  const LOADED = Symbol.for('gcfy.hook');
+  if (window[LOADED]) return;
+  window[LOADED] = true;
+
   // Every endpoint a ytd-commentbox can submit to (comments, replies, edits,
   // channel posts). Only the two create endpoints are ever rewritten; a marker
   // heading anywhere else is blocked so it cannot be published as text.
+  const API_URL = /\/youtubei\/v1\//;
   const WATCHED_URL = /\/youtubei\/v1\/(comment|backstage)\//;
   const CREATE_URL = /\/youtubei\/v1\/comment\/create_comment(_reply)?(\?|$)/;
   const MARKER = /\[\[gif:(\d{1,20}):([a-z0-9]{8,32})\]\]/;
@@ -17,6 +24,13 @@
   // nonce -> { id, expires }
   const armed = new Map();
 
+  // At document_start the wrapper is in place before any of YouTube's code.
+  // Injected into a page that has already loaded, it only works if YouTube
+  // looks window.fetch up at call time, so it does not count as live until one
+  // of YouTube's own API requests has come through it. Until then arming is
+  // refused, and the content script never types a marker into the box.
+  let live = document.readyState === 'loading';
+
   const toContent = (msg) => window.postMessage({ gcfy: 'to-content', ...msg }, location.origin);
 
   window.addEventListener('message', (e) => {
@@ -24,6 +38,7 @@
     const msg = e.data;
     if (!msg || msg.gcfy !== 'to-main') return;
     if (msg.type === 'arm' && /^\d{1,20}$/.test(msg.id) && /^[a-z0-9]{8,32}$/.test(msg.nonce)) {
+      if (!live) { toContent({ type: 'refused', nonce: msg.nonce }); return; }
       armed.set(msg.nonce, { id: msg.id, expires: Date.now() + ARM_TTL_MS });
       toContent({ type: 'armed', nonce: msg.nonce });
     } else if (msg.type === 'disarm') {
@@ -52,6 +67,7 @@
     try {
       url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
     } catch (e) { /* fall through to the original fetch */ }
+    if (!live && API_URL.test(url)) live = true;
     if (!WATCHED_URL.test(url)) return originalFetch.apply(this, arguments);
     return handleWatched.call(this, url, input, init, arguments);
   };

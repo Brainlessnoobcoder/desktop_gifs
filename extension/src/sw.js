@@ -1,6 +1,6 @@
-// Service worker: the only part that talks to tenor.com. It reads the result
-// data Tenor embeds in its own pages and hands the content script a short list
-// of { id, title, preview, width, height }.
+// Service worker (background script in Firefox): the only part that talks to
+// tenor.com. It reads the result data Tenor embeds in its own pages and hands
+// the content script a short list of { id, title, preview, width, height }.
 
 const TENOR = 'https://tenor.com';
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -8,6 +8,22 @@ const MAX_RESULTS = 50;
 
 // url -> { time, value }
 const cache = new Map();
+
+// Chrome does not run content scripts in tabs that were already open when the
+// extension is installed, so they are injected here once. Both files ignore a
+// second copy of themselves.
+chrome.runtime.onInstalled.addListener(async ({ reason }) => {
+  if (reason !== 'install') return;
+  const tabs = await chrome.tabs.query({ url: 'https://www.youtube.com/*', discarded: false });
+  await Promise.all(tabs.map(async ({ id: tabId }) => {
+    const target = { tabId };
+    try {
+      await chrome.scripting.executeScript({ target, files: ['src/main.js'], world: 'MAIN' });
+      await chrome.scripting.insertCSS({ target, files: ['src/content.css'] });
+      await chrome.scripting.executeScript({ target, files: ['src/content.js'] });
+    } catch (e) { /* the tab closed or navigated away; it gets the scripts on its next load */ }
+  }));
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return false;
