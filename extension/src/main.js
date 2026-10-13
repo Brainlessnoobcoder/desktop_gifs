@@ -124,7 +124,9 @@
       const feedback = json.actionResult && json.actionResult.feedbackText && json.actionResult.feedbackText.runs
         ? json.actionResult.feedbackText.runs.map((r) => r.text).join('')
         : '';
-      const error = ok ? null : (json.error && json.error.message) || feedback || `YouTube returned HTTP ${response.status}.`;
+      // YouTube can turn a comment down with HTTP 200 and no message of its own.
+      const fallback = response.ok ? 'YouTube did not accept this GIF comment. Nothing was posted.' : `YouTube returned HTTP ${response.status}.`;
+      const error = ok ? null : (json.error && json.error.message) || feedback || fallback;
       toContent({ type: 'result', nonce, ok, error });
     } catch (e) {
       toContent({ type: 'result', nonce, ok: response.ok, error: response.ok ? null : `YouTube returned HTTP ${response.status}.` });

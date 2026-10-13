@@ -133,9 +133,10 @@
   function buildPicker() {
     const host = document.createElement('div');
     const root = host.attachShadow({ mode: 'open' });
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(PICKER_CSS);
-    root.adoptedStyleSheets = [sheet];
+    // A <style> element rather than adoptedStyleSheets: Firefox does not let a
+    // content script assign constructed stylesheets to a page's shadow root.
+    const style = document.createElement('style');
+    style.textContent = PICKER_CSS;
 
     const panel = document.createElement('div');
     panel.className = 'panel';
@@ -160,7 +161,7 @@
     grid.className = 'grid';
 
     panel.append(search, status, grid);
-    root.append(panel);
+    root.append(style, panel);
 
     input.addEventListener('input', () => {
       clearTimeout(picker.timer);
