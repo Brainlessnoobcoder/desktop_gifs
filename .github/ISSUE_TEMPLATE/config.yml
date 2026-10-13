@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Install guide and troubleshooting
+    url: https://github.com/rayytor/desktop_gifs#install
+    about: How to load the extension, and what its error messages mean.

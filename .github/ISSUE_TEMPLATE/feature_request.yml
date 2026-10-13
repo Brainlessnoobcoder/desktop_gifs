@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest something Desktop GIFs could do.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [Limits](https://github.com/rayytor/desktop_gifs#limits) first. Some things are decided by YouTube, not by this extension: a GIF comment can only carry a Tenor GIF, so a file from your computer cannot be posted.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should it do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would you use it for?

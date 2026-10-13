@@ -1,0 +1,82 @@
+name: Bug report
+description: The extension does not install, the GIF button is missing, or a GIF does not post.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things to check first:
+
+        - **"Manifest file is missing or unreadable"** means the wrong folder was chosen. Choose the folder that has `manifest.json` directly inside it.
+        - The [Troubleshooting table](https://github.com/rayytor/desktop_gifs#troubleshooting) covers the messages the extension itself shows.
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Chrome
+        - Edge
+        - Brave
+        - Opera
+        - Firefox
+        - Firefox ESR
+        - Other (name it below)
+    validations:
+      required: true
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser version
+      description: "Chrome, Edge, Brave: open `chrome://version`. Firefox: Menu, Help, About Firefox."
+      placeholder: "141.0.7390.66"
+    validations:
+      required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: Desktop GIFs version
+      description: "Shown on the extension's card in `chrome://extensions` or `about:addons`."
+      placeholder: "0.1.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - ZIP from the Releases page
+        - Code, Download ZIP (the source)
+        - git clone
+        - Something else (say what below)
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where does it go wrong?
+      options:
+        - Installing or loading the extension
+        - There is no GIF button in the comment box
+        - Clicking the GIF button does nothing
+        - The picker opens, but search or a pasted link fails
+        - Posting the GIF fails
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: The steps you took, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Error messages
+      description: |
+        Copy the exact text of any message, or attach a screenshot. Useful places to look:
+
+        - the red line at the top of the GIF picker
+        - the extension's card in `chrome://extensions` (the **Errors** button)
+        - the page console: press F12 on the YouTube tab, open **Console**, then repeat the step that fails
