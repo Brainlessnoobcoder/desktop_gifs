@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rayytor/desktop_gifs/archive/refs/heads/main.zip"><img src="https://img.shields.io/github/manifest-json/v/rayytor/desktop_gifs?filename=extension%2Fmanifest.json&label=version&color=ff0033" alt="Version"></a>
-  <img src="https://img.shields.io/badge/Chrome-111%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 111 or newer">
+  <a href="https://github.com/rayytor/desktop_gifs/releases/latest"><img src="https://img.shields.io/github/manifest-json/v/rayytor/desktop_gifs?filename=extension%2Fmanifest.json&label=version&color=ff0033" alt="Version"></a>
+  <img src="https://img.shields.io/badge/Chrome-121%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 121 or newer">
   <img src="https://img.shields.io/badge/Firefox-140%2B-FF7139?logo=firefoxbrowser&logoColor=white" alt="Firefox 140 or newer">
   <img src="https://img.shields.io/badge/Manifest-V3-34A853" alt="Manifest V3">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/rayytor/desktop_gifs" alt="License: GPL-3.0"></a>
@@ -44,32 +44,37 @@ YouTube's mobile app can attach a GIF to a comment; the desktop site has no butt
 
 ## Install
 
-Desktop GIFs is not on the Chrome Web Store or addons.mozilla.org yet, so it is loaded from a folder. The same folder works in both browsers.
+Desktop GIFs is not on the Chrome Web Store or addons.mozilla.org yet, so it is loaded from a ZIP. There is one for each browser on the [latest release](https://github.com/rayytor/desktop_gifs/releases/latest).
 
 <p>
-  <a href="https://github.com/rayytor/desktop_gifs/archive/refs/heads/main.zip"><img src="https://img.shields.io/badge/Download-ZIP-ff0033?style=for-the-badge&logo=github&logoColor=white" alt="Download ZIP"></a>
+  <a href="https://github.com/rayytor/desktop_gifs/releases/latest/download/desktop-gifs-chromium.zip"><img src="https://img.shields.io/badge/Download-Chrome%20%C2%B7%20Edge%20%C2%B7%20Brave-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Download for Chrome, Edge and Brave"></a>
+  <a href="https://github.com/rayytor/desktop_gifs/releases/latest/download/desktop-gifs-firefox.zip"><img src="https://img.shields.io/badge/Download-Firefox-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Download for Firefox"></a>
 </p>
 
-### Chrome
+### Chrome, Edge, Brave
 
-1. [Download the ZIP](https://github.com/rayytor/desktop_gifs/archive/refs/heads/main.zip) and unzip it.
-2. Open `chrome://extensions` and turn on **Developer mode** (top right).
-3. Click **Load unpacked** and choose the `extension` folder inside the unzipped folder.
+1. Download [`desktop-gifs-chromium.zip`](https://github.com/rayytor/desktop_gifs/releases/latest/download/desktop-gifs-chromium.zip) and unzip it.
+2. Open `chrome://extensions` and turn on **Developer mode**.
+3. Click **Load unpacked** and choose the unzipped folder, the one that has `manifest.json` directly inside it.
 
 YouTube tabs that are already open get the button without a refresh.
 
-Edge, Brave and other Chromium browsers should work the same way but are untested.
+Only Chrome is tested. Edge, Brave and other Chromium browsers should work the same way.
 
 ### Firefox
 
-1. [Download the ZIP](https://github.com/rayytor/desktop_gifs/archive/refs/heads/main.zip) and unzip it.
+1. Download [`desktop-gifs-firefox.zip`](https://github.com/rayytor/desktop_gifs/releases/latest/download/desktop-gifs-firefox.zip). There is no need to unzip it.
 2. Open `about:debugging#/runtime/this-firefox`.
-3. Click **Load Temporary Add-on…** and choose `manifest.json` in the `extension` folder.
+3. Click **Load Temporary Add-on…** and choose the ZIP.
 
 YouTube tabs that are already open get the button without a refresh.
 
 > [!NOTE]
 > Firefox removes an add-on loaded this way when it closes. That is how Firefox treats every temporary add-on. Repeat steps 2 and 3 after a restart.
+
+### From the source
+
+The `extension` folder of this repository is the extension, and it loads in both browsers as it is: choose that folder in Chrome, or the `manifest.json` inside it in Firefox. Chromium browsers then list one harmless error about `background.scripts`; see [Troubleshooting](#troubleshooting).
 
 ## Use
 
@@ -98,13 +103,16 @@ The picker opens with Tenor's featured GIFs. To find another one:
 | "The page hook is not running" or "The extension was reloaded" | Refresh the YouTube tab. |
 | "Press Comment to send the GIF" | YouTube did not send the comment by itself. Press its Comment button. |
 | The post fails | Nothing is published and your text stays in the box. Try again. |
+| "YouTube did not accept this GIF comment" | YouTube turned the comment down without giving a reason. Try another GIF or another video. |
 | Search finds nothing in Firefox | Open `about:addons`, select Desktop GIFs, and check under **Permissions** that access to `tenor.com` is on. |
-| Chrome lists a warning about `background.scripts` | Ignore it. That key is there for Firefox. |
+| "Manifest file is missing or unreadable" | The wrong folder was chosen. Choose the folder that has `manifest.json` directly inside it. |
+| Chrome, Edge or Brave lists the error `'background.scripts' requires manifest version of 2 or lower` | The extension is installed and works. The message appears when the `extension` folder is loaded from the source; that key is there for Firefox. `desktop-gifs-chromium.zip` does not have it. |
+| Clicking **GIF** does nothing in Firefox | Update to 0.1.1 or newer. |
 
 ## Limits
 
 - **Unofficial.** This project is not affiliated with YouTube, Google or Tenor. It sends a field that YouTube's desktop site does not use itself, so it can stop working whenever YouTube changes something, and using it is at your own risk under YouTube's Terms of Service.
-- **Tenor only.** YouTube's GIF comments take Tenor GIFs. Tenor closed its public API in June 2026, so search results are read from Tenor's web pages and will break if those pages change. Pasting a link keeps working without search.
+- **Tenor only.** YouTube's GIF comments take Tenor GIFs, so a GIF file from your computer cannot be posted. Tenor closed its public API in June 2026, so search results are read from Tenor's web pages and will break if those pages change. Pasting a link keeps working without search.
 - **GIFs only.** Stickers and still images are left out of the results.
 - **New comments and replies only.** You cannot add a GIF while editing a comment or writing a channel post.
 
@@ -118,7 +126,7 @@ When you pick a GIF, the content script adds a one-time marker to the comment bo
 | `src/main.js` | YouTube page, main world | Rewrites the comment request so it carries the GIF |
 | `src/sw.js` | Service worker (background script in Firefox) | Fetches search results from tenor.com; on install, adds the two scripts above to YouTube tabs that are already open |
 
-There is no build step and there are no dependencies: the `extension` folder is the extension.
+There is no build step and there are no dependencies: the `extension` folder is the extension. `python3 tools/package.py` writes the two release ZIPs, which are that folder with the other browser's background key taken out of the manifest.
 
 ## Privacy
 
