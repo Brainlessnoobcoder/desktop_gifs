@@ -336,6 +336,80 @@
     setStatus(picker.favorites.length ? '' : NO_FAVORITES);
   }
 
+  // Typing /gif query at the end of a comment starts a GIF search.
+  // Remove the command but preserve the rest of the comment.
+  const quickSearchTimers = new WeakMap();
+
+  document.addEventListener('input', (event) => {
+    const editor = event.target instanceof Element
+      ? event.target.closest('#contenteditable-root')
+      : null;
+
+    if (!editor) return;
+
+    const box = editor.closest('ytd-commentbox');
+    if (!box || !box.closest(BOX_SCOPE) || box.closest(POST_DIALOG)) return;
+
+    clearTimeout(quickSearchTimers.get(editor));
+
+    quickSearchTimers.set(editor, setTimeout(() => {
+      quickSearchTimers.delete(editor);
+      if (!editor.isConnected || picker.open) return;
+
+      // Derive text and offsets from the same text nodes, including nested
+      // formatting, so command removal does not rely on a flat text offset.
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let text = '';
+      while (walker.nextNode()) {
+        nodes.push({ node: walker.currentNode, start: text.length });
+        text += walker.currentNode.data;
+      }
+      const selection = getSelection();
+
+      // Only trigger when the caret is at the end of the comment.
+      if (
+        !selection ||
+        !selection.isCollapsed ||
+        !selection.anchorNode ||
+        !editor.contains(selection.anchorNode)
+      ) return;
+
+      const caretRange = document.createRange();
+      caretRange.selectNodeContents(editor);
+      caretRange.setEnd(selection.anchorNode, selection.anchorOffset);
+
+      if (caretRange.toString() !== text) return;
+
+      const match = text.match(/(?:^|\s)\/gif\s+([^/\n]+?)\s*$/i);
+      if (!match || !match[1].trim()) return;
+
+      const query = match[1].trim();
+      // Remove command and the whitespace immediately before it, retaining
+      // all earlier editor content.
+      const startOffset = match.index;
+      const endOffset = text.length;
+      const start = [...nodes].reverse().find((item) => item.start <= startOffset);
+      const end = [...nodes].reverse().find((item) => item.start < endOffset);
+      if (!start || !end) return;
+      const range = document.createRange();
+      range.setStart(start.node, startOffset - start.start);
+      range.setEnd(end.node, endOffset - end.start);
+      range.deleteContents();
+
+      const anchor = box.querySelector('.gcfy-btn');
+      if (!anchor) return;
+
+      // IMPORTANT: set the query before opening the picker.
+      // openPicker() already calls load(), so do not call load(query) again.
+      if (!picker.host) buildPicker();
+      clearTimeout(picker.timer);
+      picker.timer = 0;
+      picker.els.input.value = query;
+      openPicker(anchor, box);
+    }, 700));
+  });
+
   // Takes the stored list, on load and whenever any tab changes it, so every
   // tab works on the same list and none writes back an old copy.
   function useFavorites(stored) {

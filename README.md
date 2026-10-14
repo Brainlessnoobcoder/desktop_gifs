@@ -99,6 +99,18 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | In a comment box with a GIF attached, posts the comment |
 | <kbd>Esc</kbd> | Closes the picker |
 
+### Quick search
+
+Type `/gif` followed by a search query at the end of a comment to open the picker with matching results.
+
+```text
+Hello /gif cats
+```
+
+The command is removed from the comment, leaving `Hello` intact. The picker searches Tenor for `cats`.
+
+`/gif` without a query does nothing.
+
 ## Troubleshooting
 
 | What you see | What to do |
