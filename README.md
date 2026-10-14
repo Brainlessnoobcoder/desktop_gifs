@@ -108,18 +108,26 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 | "The page hook is not running" or "The extension was reloaded" | Refresh the YouTube tab. |
 | "The GIF was not sent" | YouTube did not send the comment. Press its Comment button again. |
 | The post fails | Nothing is published, and your text and the GIF stay in the box. Try again. |
-| "YouTube does not accept this GIF" | YouTube only takes GIFs that Tenor rates G, its rating for all audiences. The picker leaves the others out, but one can get through when Tenor's ratings cannot be read. Pick a different GIF. |
-| "YouTube only takes GIFs that Tenor rates G" | The link you pasted points at a GIF with another rating. Pick a different GIF. |
-| "YouTube did not accept this GIF comment" | YouTube turned the comment down without giving a reason. Try another GIF or another video. |
+| "YouTube is not taking GIF comments from desktop for your account or network right now" | Since 14 October 2026 YouTube blocks GIF comments sent from desktop for some accounts or networks for a while, often after several GIFs have been posted. The extension already tried again. The GIF is not the cause, so picking another one will not help. Your text and the GIF stay in the box; try again later. The YouTube phone app may still post GIFs from the same account. |
+| "YouTube turned it down. Trying again…" | YouTube blocked the comment and the extension is retrying on its own. Wait for it to finish; there is no need to click again. |
+| "Either Tenor does not rate the GIF G, or YouTube is not taking GIF comments" | Tenor could not be asked for the GIF's rating, so the extension does not know which one it is. Try a GIF from the picker's search results: those are rated G. |
+| "YouTube does not accept this GIF" | YouTube looked the GIF up and will not take it. Pick a different GIF. |
+| "YouTube only takes GIFs that Tenor rates G" | The GIF has another rating on Tenor. The extension checks a pasted link when you pick it, and a favorite or a GIF without a rating just before posting. Pick a different GIF. |
+| "Checking the GIF…" | The GIF was picked without a rating, so the extension asks Tenor for it before posting. This takes at most five seconds; if Tenor does not answer, the comment is posted anyway. |
+| "YouTube rejected this GIF comment" | YouTube refused the comment for another reason. Its own explanation, if it gave one, follows the HTTP status. Nothing was posted. |
+| "YouTube did not confirm this GIF comment" | YouTube's answer could not be read, so the comment may or may not be up. Check the comments before posting again. |
 | Search finds nothing in Firefox | Open `about:addons`, select Desktop GIFs, and check under **Permissions** that access to `tenor.com` is on. |
 | "Manifest file is missing or unreadable" | The wrong folder was chosen. Choose the folder that has `manifest.json` directly inside it. |
 | Chrome, Edge or Brave lists the error `'background.scripts' requires manifest version of 2 or lower` | The extension is installed and works. The message appears when the `extension` folder is loaded from the source; that key is there for Firefox. `desktop-gifs-chromium.zip` does not have it. |
 | Clicking **GIF** does nothing in Firefox | Update to 0.1.1 or newer. |
 
+If posting keeps failing, open the browser's developer tools and look for **Desktop GIFs: comment not confirmed** in the YouTube tab's Console; Chromium also lists it among the extension's errors. It gives the endpoint, the Tenor ID, whether the GIF was rated G, whether there was text, how YouTube answered (`kind`), how many tries were made, the HTTP and API status and YouTube's own message. It holds no comment text, headers, cookies or response body, so it can be pasted into a bug report as it is.
+
 ## Limits
 
 - **Unofficial.** This project is not affiliated with YouTube, Google or Tenor. It sends a field that YouTube's desktop site does not use itself, so it can stop working whenever YouTube changes something, and using it is at your own risk under YouTube's Terms of Service.
 - **Tenor only.** YouTube's GIF comments take Tenor GIFs, so a GIF file from your computer cannot be posted.
+- **YouTube may block it for a while.** Since 14 October 2026 YouTube blocks GIF comments sent from desktop for some accounts or networks, apparently for a while and often after several GIFs have been posted, while others still post normally. When it blocks a G-rated GIF, the extension tries three times in about six seconds, then stops. A blocked try posts nothing, so a retry never posts twice. Some people also report GIF comments posted from desktop being removed a few seconds later.
 - **G-rated GIFs only.** YouTube turns down every GIF that Tenor does not rate G, so the picker shows only those, and a pasted link to any other GIF is not offered.
 - **Search depends on Tenor's website.** Tenor closed its public API in June 2026. Search and ratings come from the API that tenor.com itself uses, with the key its pages carry, and fall back to the results in Tenor's web pages, which have no ratings. Either can break when Tenor changes its site.
 - **GIFs only.** Stickers and still images are left out of the results.
@@ -136,6 +144,8 @@ When you pick a GIF, the content script attaches it to the comment box. When you
 | `src/sw.js` | Service worker (background script in Firefox) | Fetches G-rated search results from Tenor; on install, adds the two scripts above to YouTube tabs that are already open |
 
 There is no build step and there are no dependencies: the `extension` folder is the extension. `python3 tools/package.py` writes the two release ZIPs, which are that folder with the other browser's background key taken out of the manifest.
+
+`node --test tests/main.test.cjs tests/sw.test.cjs` (Node.js 22 or newer) checks how comment requests are rewritten, how YouTube's answers are read and retried, and the Tenor rating check, against simulated responses. `python3 tests/picker.browser.py` drives the real content script in Chromium and Firefox on a local page that imitates YouTube's comment boxes and a notification reply dialog; it needs Python's `playwright` package and its browsers (`python3 -m playwright install chromium firefox`). Neither posts anything to YouTube.
 
 ## Privacy
 

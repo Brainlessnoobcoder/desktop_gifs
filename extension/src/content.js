@@ -15,7 +15,10 @@
   const SEARCH_DEBOUNCE_MS = 350;
   const ARM_TIMEOUT_MS = 1500;
   const SUBMIT_GRACE_MS = 4000;
-  const RESULT_TIMEOUT_MS = 20000;
+  // Long enough for main.js to try a blocked GIF comment again.
+  const RESULT_TIMEOUT_MS = 30000;
+  // How long a post waits for Tenor to rate a GIF picked without a rating.
+  const CHECK_TIMEOUT_MS = 5000;
   const NO_FAVORITES = 'No favorites yet. Point at a GIF and click its star.';
 
   const PICKER_CSS = `
@@ -147,6 +150,16 @@
 
   function buildPicker() {
     const host = document.createElement('div');
+    // The picker is placed inside its comment box, so a click in it counts as
+    // a click inside a reply dialog, which would otherwise close. A manual
+    // popover still draws above the dialog, unclipped by its containers.
+    host.setAttribute('popover', 'manual');
+    // Let the picker's own controls handle pointer events, then keep them from
+    // YouTube's handlers. This must not check picker.open: picking a GIF
+    // removes the picker while that same click is still bubbling.
+    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu']) {
+      host.addEventListener(type, (e) => e.stopPropagation());
+    }
     const root = host.attachShadow({ mode: 'open' });
     // A <style> element rather than adoptedStyleSheets: Firefox does not let a
     // content script assign constructed stylesheets to a page's shadow root.
@@ -235,7 +248,8 @@
     picker.box = box;
     anchor.setAttribute('aria-expanded', 'true');
     picker.els.panel.toggleAttribute('data-dark', document.documentElement.hasAttribute('dark'));
-    document.documentElement.append(picker.host);
+    box.append(picker.host);
+    picker.host.showPopover();
     place();
     picker.els.input.focus();
     load(picker.els.input.value);
@@ -484,7 +498,9 @@
   function enableSubmit(box) {
     const submit = submitOf(box);
     const att = attachments.get(box);
-    if (!submit || !att) return;
+    // Only a GIF with no text needs this. Once there is text, YouTube's own
+    // checks and its sending state decide whether the button is usable.
+    if (!submit || !att || att.posting || editorOf(box)?.textContent.trim()) return;
     if (submit.disabled) submit.disabled = false;
     if (submit.hasAttribute('aria-disabled')) submit.removeAttribute('aria-disabled');
     for (const style of BUTTON_STYLES) {
@@ -531,6 +547,7 @@
       if (msg.type === 'armed') armedAck(true);
       else if (msg.type === 'refused') armedAck('refused');
       else if (msg.type === 'seen') seen = true;
+      else if (msg.type === 'retrying') setChipStatus(att, `YouTube turned it down. Trying again (${msg.attempt} of ${msg.tries})…`);
       else if (msg.type === 'result') settle(msg);
     });
 
@@ -538,7 +555,30 @@
     att.chip.toggleAttribute('data-busy', true);
     setChipStatus(att, 'Posting…');
     try {
-      toMain({ type: 'arm', id: att.gif.id, nonce });
+      // A favorite or a result from Tenor's web pages may have no rating yet.
+      // A GIF Tenor does not rate G is never sent. One whose rating cannot be
+      // read still is, and YouTube decides; main.js just does not retry it.
+      let rating = att.gif.contentRating;
+      if (rating !== 'G') {
+        setChipStatus(att, 'Checking the GIF…');
+        const checked = await Promise.race([
+          chrome.runtime.sendMessage({ type: 'check', id: att.gif.id }).catch(() => null),
+          sleep(CHECK_TIMEOUT_MS).then(() => null),
+        ]);
+        const found = checked && checked.ok && Array.isArray(checked.gifs) && checked.gifs.find((g) => g.id === att.gif.id);
+        rating = found ? found.contentRating : null;
+        if (rating && rating !== 'G') {
+          setChipStatus(att, `YouTube only takes GIFs that Tenor rates G. This one is rated ${rating}. Nothing was posted.`, 'error');
+          return;
+        }
+        // A reply dialog can be closed while Tenor answers.
+        if (!box.isConnected || !editor.getClientRects().length) {
+          setChipStatus(att, 'The comment box was closed. Open it and try again.', 'error');
+          return;
+        }
+        setChipStatus(att, 'Posting…');
+      }
+      toMain({ type: 'arm', id: att.gif.id, ratedG: rating === 'G', nonce });
       // Without the page hook the marker would be posted as plain text, so
       // nothing is typed into the box until the hook has answered.
       const armed = await Promise.race([armedPromise, sleep(ARM_TIMEOUT_MS).then(() => false)]);
@@ -546,6 +586,11 @@
         setChipStatus(att, armed === 'refused'
           ? 'Not ready in this tab yet. Try again in a few seconds, or refresh this page.'
           : 'The page hook is not running. Refresh this page and try again.', 'error');
+        return;
+      }
+      if (!box.isConnected || !editor.getClientRects().length) {
+        toMain({ type: 'disarm', nonce });
+        setChipStatus(att, 'The comment box was closed. Open it and try again.', 'error');
         return;
       }
 
@@ -569,6 +614,7 @@
       fromMain.delete(nonce);
       att.posting = false;
       att.chip.toggleAttribute('data-busy', false);
+      enableSubmit(box);
     }
   }
 
@@ -593,6 +639,9 @@
   }, true);
 
   window.addEventListener('keydown', (e) => {
+    // The picker sits inside the comment box; Ctrl+Enter in its search field
+    // must not post the GIF already attached to that box.
+    if (inPicker(e)) return;
     if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
     const box = boxIn(e.composedPath());
     if (!box || !attachments.has(box)) return;

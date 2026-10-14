@@ -12,6 +12,7 @@ const TENOR = 'https://tenor.com';
 const TENOR_API = 'https://tenor.googleapis.com/v2';
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_RESULTS = 50;
+const TENOR_TIMEOUT_MS = 10000;
 
 // url -> { time, value }
 const cache = new Map();
@@ -46,6 +47,7 @@ async function handle(msg) {
   if (msg.type === 'featured') return featured();
   if (msg.type === 'search' && typeof msg.query === 'string') return search(msg.query);
   if (msg.type === 'resolve' && typeof msg.input === 'string') return resolve(msg.input);
+  if (msg.type === 'check' && typeof msg.id === 'string' && /^\d{1,20}$/.test(msg.id)) return check(msg.id);
   throw new Error('Bad request.');
 }
 
@@ -62,7 +64,7 @@ async function cached(url, load) {
 // values its own scripts send to Tenor's API (null if they cannot be read).
 function fetchPage(url) {
   return cached(url, async () => {
-    const res = await fetch(url, { credentials: 'omit', redirect: 'follow' });
+    const res = await fetch(url, { credentials: 'omit', redirect: 'follow', signal: AbortSignal.timeout(TENOR_TIMEOUT_MS) });
     if (!res.ok) throw new Error(res.status === 404 ? 'Tenor could not find that GIF.' : `Tenor returned HTTP ${res.status}.`);
     if (new URL(res.url).origin !== TENOR) throw new Error('Tenor redirected somewhere unexpected.');
     const html = await res.text();
@@ -92,7 +94,7 @@ async function fetchApi(path, params) {
   const query = new URLSearchParams({ ...keys, contentfilter: 'high', media_filter: 'tinygif,tinywebp,gif', ...params });
   const url = `${TENOR_API}${path}?${query}`;
   return cached(url, async () => {
-    const res = await fetch(url, { credentials: 'omit' });
+    const res = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(TENOR_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`Tenor returned HTTP ${res.status}.`);
     const { results } = await res.json();
     if (!Array.isArray(results)) throw new Error('Tenor sent an answer that could not be read.');
@@ -117,6 +119,8 @@ function toGif(r) {
     preview: f.url,
     width: dims[0] || 220,
     height: dims[1] || 124,
+    // Only Tenor's API gives ratings; results from its web pages have none.
+    contentRating: typeof r.content_rating === 'string' ? r.content_rating : null,
   };
 }
 
@@ -176,7 +180,18 @@ async function resolve(input) {
   if (post && !ratedG(post)) {
     throw new Error(`YouTube only takes GIFs that Tenor rates G. This one is rated ${post.content_rating}.`);
   }
+  if (post) gifs[0].contentRating = post.content_rating;
   return gifs;
+}
+
+// The exact GIF about to be posted, with its current rating, for one that was
+// picked without a known rating (a favorite, or a result from Tenor's web
+// pages). An empty list means Tenor did not return it.
+async function check(id) {
+  const results = await fetchApi('/posts', { ids: id, contentfilter: 'off' });
+  const post = results.find((r) => r && String(r.id) === id);
+  const gif = post && toGif(post);
+  return gif ? [gif] : [];
 }
 
 function decodeMediaId(mediaId) {

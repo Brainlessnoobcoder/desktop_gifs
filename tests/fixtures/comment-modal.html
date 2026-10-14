@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Desktop GIFs modal regression fixture</title>
+<style>
+  body { margin: 0; font: 14px Arial, sans-serif; background: #eee; }
+  #outside { position: fixed; top: 16px; left: 16px; }
+  #reply-modal {
+    position: fixed; top: 65%; left: 50%; transform: translate(-50%, -50%);
+    width: 620px; height: 320px; padding: 24px; margin: 0; border: 0;
+    box-sizing: border-box; overflow: auto; background: white; z-index: 100;
+  }
+  #reply-modal[hidden] { display: none; }
+  ytd-comment-thread-renderer, ytd-commentbox { display: block; }
+  #contenteditable-root { min-height: 48px; padding: 8px; border: 1px solid #aaa; }
+  #footer { display: flex; align-items: center; gap: 8px; padding-top: 8px; }
+  #submit-button { margin-left: auto; }
+  #inline-thread { position: absolute; top: 600px; left: 400px; width: 500px; }
+</style>
+<button id="outside">Outside the reply dialog</button>
+<div id="reply-modal" role="dialog" aria-label="Notification reply">
+  <h2>Reply from a notification</h2>
+  <ytd-comment-thread-renderer>
+    <ytd-commentbox id="modal-box">
+      <div id="contenteditable-root" contenteditable="true" aria-label="Reply text"></div>
+      <div id="footer">
+        <button id="emoji-button" type="button">Emoji</button>
+        <div id="cancel-button"><button type="button">Cancel</button></div>
+        <div id="submit-button"><button type="button" disabled>Reply</button></div>
+      </div>
+    </ytd-commentbox>
+  </ytd-comment-thread-renderer>
+</div>
+<ytd-comment-thread-renderer id="inline-thread">
+  <ytd-commentbox id="inline-box">
+    <div id="contenteditable-root" contenteditable="true" aria-label="Inline comment text"></div>
+    <div id="footer">
+      <button id="emoji-button" type="button">Emoji</button>
+      <div id="cancel-button"><button type="button">Cancel</button></div>
+      <div id="submit-button"><button type="button" disabled>Comment</button></div>
+    </div>
+  </ytd-commentbox>
+</ytd-comment-thread-renderer>
+<script>
+  let modal = document.querySelector('#reply-modal');
+  if (new URL(location.href).searchParams.has('native')) {
+    const dialog = document.createElement('dialog');
+    dialog.id = modal.id;
+    dialog.setAttribute('aria-label', 'Notification reply');
+    dialog.innerHTML = modal.innerHTML;
+    modal.replaceWith(dialog);
+    modal = dialog;
+    modal.showModal();
+  }
+  window.stats = { dismissed: 0, outsideFocus: 0, pickerBubble: [], requests: [], arms: [], posts: [] };
+  const dismiss = () => {
+    if (modal.hidden) return;
+    stats.dismissed++;
+    if (modal instanceof HTMLDialogElement) modal.close();
+    modal.hidden = true;
+  };
+  // Like YouTube's overlay manager, dismiss before the target's click handlers
+  // run if the originating overlay is absent from the composed event path.
+  for (const type of ['pointerdown', 'click']) {
+    document.addEventListener(type, (event) => {
+      if (!modal.hidden && !event.composedPath().includes(modal)) dismiss();
+    }, true);
+  }
+  document.addEventListener('focus', (event) => {
+    const path = event.composedPath();
+    if (!modal.hidden && path.some((node) => node.shadowRoot?.querySelector('.panel')) && !path.includes(modal)) stats.outsideFocus++;
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') dismiss();
+  });
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu']) {
+    window.addEventListener(type, (event) => {
+      if (event.composedPath().some((node) => node.shadowRoot?.querySelector('.panel'))) stats.pickerBubble.push(type);
+    });
+  }
+  const gifs = [
+    { id: '13723327785995541767', title: 'First GIF', width: 120, height: 80 },
+    { id: '12696714748418769445', title: 'Second GIF', width: 120, height: 80 },
+  ].map((gif) => ({ ...gif, contentRating: 'G', preview: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' }));
+  let favorites = [];
+  const storageListeners = [];
+  window.chrome = {
+    runtime: {
+      async sendMessage(message) {
+        stats.requests.push(message);
+        if (message.type === 'check' && window.checkFailure) return { ok: false, error: window.checkFailure };
+        if (message.type === 'check' && window.delayCheck) await new Promise((resolve) => { window.finishCheck = resolve; });
+        // window.checkRating: the rating Tenor reports when content.js checks a GIF.
+        if (message.type === 'check') {
+          return { ok: true, gifs: gifs.filter((gif) => gif.id === message.id).map((gif) => ({ ...gif, contentRating: window.checkRating || 'G' })) };
+        }
+        // window.unrated: results without a rating, like favorites saved by an
+        // older version or results from Tenor's web pages.
+        const results = window.unrated ? gifs.map((gif) => ({ ...gif, contentRating: null })) : gifs;
+        return { ok: true, gifs: message.type === 'search' ? results.slice(0, 1) : results };
+      },
+    },
+    storage: {
+      local: {
+        async get() { return { favorites }; },
+        async set(items) {
+          const oldValue = favorites;
+          favorites = items.favorites;
+          for (const listener of storageListeners) listener({ favorites: { oldValue, newValue: favorites } }, 'local');
+        },
+      },
+      onChanged: { addListener(listener) { storageListeners.push(listener); } },
+    },
+  };
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || event.data?.gcfy !== 'to-main' || event.data.type !== 'arm') return;
+    stats.arms.push(event.data);
+    window.postMessage({ gcfy: 'to-content', type: 'armed', nonce: event.data.nonce }, location.origin);
+  });
+  for (const box of document.querySelectorAll('ytd-commentbox')) {
+    // Native YouTube enables a valid nonempty draft after input, then disables
+    // submission during its request. Keep those transitions in the fixture.
+    box.querySelector('#contenteditable-root').addEventListener('input', () => {
+      box.querySelector('#submit-button button').disabled = !box.querySelector('#contenteditable-root').textContent.trim();
+    });
+    box.querySelector('#submit-button button').addEventListener('click', () => {
+      const text = box.querySelector('#contenteditable-root').textContent;
+      stats.posts.push({ box: box.id, text });
+      const nonce = text.match(/\[\[gif:\d+:([a-z0-9]+)\]\]/)?.[1];
+      if (nonce) {
+        box.querySelector('#submit-button button').disabled = true;
+        window.postMessage({ gcfy: 'to-content', type: 'seen', nonce }, location.origin);
+        const finish = () => window.postMessage({ gcfy: 'to-content', type: 'result', nonce, ok: !window.postFailure, error: window.postFailure }, location.origin);
+        if (window.delayPost) window.finishPost = finish;
+        else finish();
+      }
+      if (!window.postFailure) box.querySelector('#contenteditable-root').textContent = '';
+    });
+  }
+</script>
+</html>
