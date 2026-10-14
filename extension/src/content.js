@@ -3,10 +3,20 @@
 // hands it to the page-world hook (main.js) by submitting a one-time marker
 // through YouTube's own comment box.
 (() => {
-  // sw.js also injects this file into tabs that were open before the install;
-  // a tab must not end up with two copies.
-  if (globalThis.gcfyLoaded) return;
-  globalThis.gcfyLoaded = true;
+  // sw.js also injects this file into YouTube tabs that are already open when
+  // the extension is installed, updated or reloaded. Each copy tells the ones
+  // before it to stop, then takes over what they left in the page: their GIF
+  // buttons and picker are replaced, and a GIF attached to a comment box stays
+  // attached. The text in the box belongs to YouTube and is left alone. An
+  // older copy may already be dead (Firefox unloads them), so the new one
+  // cleans up after it either way.
+  const TAKEOVER = 'gcfy-takeover';
+  // Sent by a stopped copy when it lets go of a GIF it was still posting.
+  const RELEASED = 'gcfy-released';
+  document.dispatchEvent(new CustomEvent(TAKEOVER));
+  const life = new AbortController();
+  const { signal } = life;
+  let retired = false;
 
   const BOX_SCOPE = 'ytd-comment-simplebox-renderer, ytd-comment-thread-renderer';
   const POST_DIALOG = 'ytd-backstage-post-dialog-renderer';
@@ -50,6 +60,20 @@
     }
     .fav-tab[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
     .fav-tab:focus-visible, .star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .update {
+      flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px;
+      border-bottom: 1px solid var(--line); color: var(--fg);
+    }
+    .update[hidden] { display: none; }
+    .update span { flex: 1; min-width: 0; }
+    .update a { color: var(--accent); font-weight: 500; text-decoration: none; }
+    .update a:hover { text-decoration: underline; }
+    .update button {
+      flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
+      background: transparent; color: var(--muted); font: 16px/1 Arial, sans-serif; cursor: pointer;
+    }
+    .update button:hover { background: var(--field); }
+    .update a:focus-visible, .update button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     .status { flex: none; padding: 6px 12px 0; color: var(--muted); }
     .status:empty { display: none; }
     .status[data-kind="error"] { color: var(--err); }
@@ -91,6 +115,8 @@
 
   const fromMain = new Map(); // nonce -> callback(msg)
 
+  // Not tied to signal: a copy that has been told to stop still hears how a
+  // post it started ends.
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.origin !== location.origin) return;
     const msg = e.data;
@@ -134,22 +160,27 @@
   let scanQueued = false;
   function scan() {
     scanQueued = false;
+    if (retired) return;
     for (const box of document.querySelectorAll('ytd-commentbox')) addButton(box);
   }
-  new MutationObserver(() => {
+  const scanner = new MutationObserver(() => {
     if (scanQueued) return;
     scanQueued = true;
     requestAnimationFrame(scan);
-  }).observe(document.documentElement, { childList: true, subtree: true });
-  // Comment boxes that are already there when this file is injected late.
+  });
+  scanner.observe(document.documentElement, { childList: true, subtree: true });
+  // Buttons and a picker left by an older copy, then the comment boxes that
+  // are already there when this file is injected late.
+  for (const el of document.querySelectorAll('.gcfy-btn, [data-gcfy-picker]')) el.remove();
   scan();
 
   // ------------------------------------------------------------------ picker
 
-  const picker = { open: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null, favorites: [], showingFavorites: false };
+  const picker = { open: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null, favorites: [], showingFavorites: false, updateAsked: false };
 
   function buildPicker() {
     const host = document.createElement('div');
+    host.setAttribute('data-gcfy-picker', '');
     // The picker is placed inside its comment box, so a click in it counts as
     // a click inside a reply dialog, which would otherwise close. A manual
     // popover still draws above the dialog, unclipped by its containers.
@@ -188,6 +219,21 @@
     favTab.setAttribute('aria-pressed', 'false');
     search.append(input, favTab);
 
+    const update = document.createElement('div');
+    update.className = 'update';
+    update.hidden = true;
+    const updateText = document.createElement('span');
+    const updateLink = document.createElement('a');
+    updateLink.target = '_blank';
+    updateLink.rel = 'noopener noreferrer';
+    updateLink.textContent = 'Download';
+    const updateClose = document.createElement('button');
+    updateClose.type = 'button';
+    updateClose.textContent = '×';
+    updateClose.title = 'Hide until the next version';
+    updateClose.setAttribute('aria-label', 'Hide until the next version');
+    update.append(updateText, updateLink, updateClose);
+
     const status = document.createElement('div');
     status.className = 'status';
     status.setAttribute('role', 'status');
@@ -195,7 +241,7 @@
     const grid = document.createElement('div');
     grid.className = 'grid';
 
-    panel.append(search, status, grid);
+    panel.append(search, update, status, grid);
     root.append(style, panel);
 
     input.addEventListener('input', () => {
@@ -217,8 +263,36 @@
       else if (tile) attach(picker.gifs[Number(tile.dataset.index)]);
     });
 
+    updateClose.addEventListener('click', () => {
+      update.hidden = true;
+      chrome.storage.local.set({ dismissedUpdate: update.dataset.version }).catch(() => {});
+      input.focus();
+    });
+
     picker.host = host;
-    picker.els = { panel, input, status, grid, favTab };
+    picker.els = { panel, input, status, grid, favTab, update, updateText, updateLink };
+  }
+
+  // A ZIP-installed extension does not update itself, so the picker says when
+  // a newer release is out, until it is installed or its notice is closed.
+  // Asked once per page; the worker asks GitHub at most once a day.
+  async function showUpdate() {
+    if (picker.updateAsked) return;
+    picker.updateAsked = true;
+    let release = null;
+    try {
+      const [reply, { dismissedUpdate }] = await Promise.all([
+        chrome.runtime.sendMessage({ type: 'update' }),
+        chrome.storage.local.get('dismissedUpdate'),
+      ]);
+      release = reply && reply.ok && reply.release && reply.release.version !== dismissedUpdate ? reply.release : null;
+    } catch (e) { /* no notice */ }
+    if (!release) return;
+    const { update, updateText, updateLink } = picker.els;
+    update.dataset.version = release.version;
+    updateText.textContent = `Desktop GIFs ${release.version} is out.`;
+    updateLink.href = release.url;
+    update.hidden = false;
   }
 
   function setStatus(text, kind) {
@@ -253,6 +327,7 @@
     place();
     picker.els.input.focus();
     load(picker.els.input.value);
+    showUpdate();
   }
 
   function closePicker() {
@@ -362,9 +437,10 @@
   }
 
   chrome.storage.local.get('favorites').then((items) => useFavorites(items.favorites));
-  chrome.storage.onChanged.addListener((changes, area) => {
+  const onStorage = (changes, area) => {
     if (area === 'local' && changes.favorites) useFavorites(changes.favorites.newValue);
-  });
+  };
+  chrome.storage.onChanged.addListener(onStorage);
 
   // Only writes the list; the change listener above then shows it, here and
   // in every other tab.
@@ -441,14 +517,25 @@
 
   function attach(gif) {
     const box = picker.box;
-    const footer = box && box.isConnected && box.querySelector('#footer');
-    const editor = footer && editorOf(box);
+    const editor = box && box.isConnected && box.querySelector('#footer') && editorOf(box);
     if (!editor) {
       setStatus('The comment box was closed. Open it and try again.', 'error');
       return;
     }
     const old = attachments.get(box);
     if (old && old.posting) return;
+    attachTo(box, gif);
+
+    closePicker();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selectRange(editor, range);
+  }
+
+  // kept: what an older copy's chip showed, when this copy takes it over.
+  function attachTo(box, gif, kept) {
+    const footer = box.querySelector('#footer');
     detach(box, false);
 
     const chip = document.createElement('div');
@@ -482,17 +569,42 @@
     // YouTube disables its Comment button while the text is empty; a comment
     // that is only a GIF must still be postable.
     const observer = new MutationObserver(() => enableSubmit(box));
-    const att = { gif, chip, status, observer, posting: false, greyed: [] };
+    const att = { gif, chip, status, observer, posting: false, greyed: (kept && kept.greyed) || [] };
     attachments.set(box, att);
+    saveChip(att);
+    if (kept) setChipStatus(att, kept.status, kept.kind);
     const submit = submitOf(box);
     if (submit) observer.observe(submit, { attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'class'] });
     enableSubmit(box);
+  }
 
-    closePicker();
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    selectRange(editor, range);
+  // What a newer copy needs to take the chip over.
+  function saveChip(att) {
+    att.chip.dataset.gcfyGif = JSON.stringify({ gif: att.gif, greyed: att.greyed });
+  }
+
+  const isGif = (g) => g && typeof g.id === 'string' && /^\d{1,20}$/.test(g.id) && typeof g.title === 'string'
+    && typeof g.preview === 'string' && g.width > 0 && g.height > 0;
+  const isStyle = (s) => Array.isArray(s) && s.length === 2 && BUTTON_STYLES.some((b) => b[0] === s[0] && b[1] === s[1]);
+
+  // Takes over the GIFs an older copy attached, except one it is still
+  // posting: that one is handed over (RELEASED) if the post fails.
+  function adoptChips() {
+    if (retired) return;
+    for (const chip of document.querySelectorAll('.gcfy-attachment[data-gcfy-gif]:not([data-busy])')) {
+      if ([...attachments.values()].some((att) => att.chip === chip)) continue;
+      const box = chip.closest('ytd-commentbox');
+      let saved = null;
+      try { saved = JSON.parse(chip.dataset.gcfyGif); } catch (e) { /* dropped below */ }
+      const status = chip.querySelector('.gcfy-attachment-status');
+      chip.remove();
+      if (!box || !box.querySelector('#footer') || !saved || !isGif(saved.gif) || attachments.has(box)) continue;
+      attachTo(box, saved.gif, {
+        greyed: Array.isArray(saved.greyed) ? saved.greyed.filter(isStyle) : [],
+        status: status ? status.textContent : '',
+        kind: status ? status.dataset.kind : undefined,
+      });
+    }
   }
 
   function enableSubmit(box) {
@@ -506,7 +618,7 @@
     for (const style of BUTTON_STYLES) {
       if (!submit.classList.contains(style[0])) continue;
       submit.classList.replace(style[0], style[1]);
-      if (!att.greyed.includes(style)) att.greyed.push(style);
+      if (!att.greyed.includes(style)) { att.greyed.push(style); saveChip(att); }
     }
   }
 
@@ -614,7 +726,12 @@
       fromMain.delete(nonce);
       att.posting = false;
       att.chip.toggleAttribute('data-busy', false);
-      enableSubmit(box);
+      if (retired) {
+        release(box);
+        document.dispatchEvent(new CustomEvent(RELEASED));
+      } else {
+        enableSubmit(box);
+      }
     }
   }
 
@@ -636,7 +753,7 @@
     } else if (cancel && path.includes(cancel) && !attachments.get(box).posting) {
       detach(box, false);
     }
-  }, true);
+  }, { capture: true, signal });
 
   window.addEventListener('keydown', (e) => {
     // The picker sits inside the comment box; Ctrl+Enter in its search field
@@ -648,7 +765,7 @@
     e.preventDefault();
     e.stopImmediatePropagation();
     post(box);
-  }, true);
+  }, { capture: true, signal });
 
   // ------------------------------------------------------- page interactions
 
@@ -669,15 +786,15 @@
         e.preventDefault();
         attach(picker.gifs[0]);
       }
-    }, true);
+    }, { capture: true, signal });
   }
-  window.addEventListener('wheel', (e) => { if (inPicker(e)) e.stopImmediatePropagation(); }, { capture: true, passive: true });
+  window.addEventListener('wheel', (e) => { if (inPicker(e)) e.stopImmediatePropagation(); }, { capture: true, passive: true, signal });
 
   window.addEventListener('pointerdown', (e) => {
     if (!picker.open) return;
     const path = e.composedPath();
     if (!path.includes(picker.host) && !path.includes(picker.anchor)) closePicker();
-  }, true);
+  }, { capture: true, signal });
 
   let placeQueued = false;
   const queuePlace = () => {
@@ -685,10 +802,33 @@
     placeQueued = true;
     requestAnimationFrame(() => { placeQueued = false; place(); });
   };
-  window.addEventListener('scroll', queuePlace, { capture: true, passive: true });
-  window.addEventListener('resize', queuePlace, { passive: true });
+  window.addEventListener('scroll', queuePlace, { capture: true, passive: true, signal });
+  window.addEventListener('resize', queuePlace, { passive: true, signal });
   window.addEventListener('yt-navigate-start', () => {
     closePicker();
     for (const [box, att] of attachments) if (!att.posting) detach(box, false);
-  });
+  }, { signal });
+
+  // ---------------------------------------------------------------- handover
+
+  // Lets go of a GIF without removing it, for the copy that comes next.
+  function release(box) {
+    const att = attachments.get(box);
+    if (!att) return;
+    attachments.delete(box);
+    att.observer.disconnect();
+  }
+
+  function retire() {
+    retired = true;
+    life.abort();
+    scanner.disconnect();
+    try { chrome.storage.onChanged.removeListener(onStorage); } catch (e) { /* this copy's extension is gone */ }
+    closePicker();
+    for (const [box, att] of attachments) if (!att.posting) release(box);
+  }
+
+  document.addEventListener(TAKEOVER, retire, { signal });
+  document.addEventListener(RELEASED, adoptChips, { signal });
+  adoptChips();
 })();

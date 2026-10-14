@@ -77,6 +77,15 @@ YouTube tabs that are already open get the button without a refresh.
 
 The `extension` folder of this repository is the extension, and it loads in both browsers as it is: choose that folder in Chrome, or the `manifest.json` inside it in Firefox. Chromium browsers then list one harmless error about `background.scripts`; see [Troubleshooting](#troubleshooting).
 
+### Updating
+
+An extension loaded from a ZIP cannot update itself, so the GIF picker says when a new version is out, with a **Download** link to its release. To install it:
+
+- **Chrome, Edge, Brave:** unzip the new ZIP over the old folder, replacing its files, then click the reload button on the extension's card in `chrome://extensions`. Your favorites are kept.
+- **Firefox:** load the new ZIP as in step 3 above.
+
+YouTube tabs that are already open switch to the new version without a refresh, and keep what you typed and the GIF attached to a comment box. Coming from 0.1.5 or older, a GIF that was already attached is still posted by the old version; refresh the tab once if anything acts up. The **×** on the notice hides it until the next version.
+
 ## Use
 
 1. On a video or a Short, click **Add a comment…** or **Reply**.
@@ -116,6 +125,8 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 | "Checking the GIF…" | The GIF was picked without a rating, so the extension asks Tenor for it before posting. This takes at most five seconds; if Tenor does not answer, the comment is posted anyway. |
 | "YouTube rejected this GIF comment" | YouTube refused the comment for another reason. Its own explanation, if it gave one, follows the HTTP status. Nothing was posted. |
 | "YouTube did not confirm this GIF comment" | YouTube's answer could not be read, so the comment may or may not be up. Check the comments before posting again. |
+| "This browser could not reach tenor.com" | Open [tenor.com](https://tenor.com) in a tab. If it does not load there either, something on your network or computer blocks it: a firewall, a DNS filter, a VPN, or a school or work network. Once the extension has reached tenor.com one time, search keeps working through Tenor's API even when tenor.com itself is blocked. |
+| "Desktop GIFs is not allowed to reach tenor.com" | In Chrome, Edge or Brave, open the extension's **Details** in `chrome://extensions` and set **Site access** to **On all sites**, or add `tenor.com`. In Firefox, open `about:addons`, select Desktop GIFs, and turn on access to `tenor.com` under **Permissions**. |
 | Search finds nothing in Firefox | Open `about:addons`, select Desktop GIFs, and check under **Permissions** that access to `tenor.com` is on. |
 | "Manifest file is missing or unreadable" | The wrong folder was chosen. Choose the folder that has `manifest.json` directly inside it. |
 | Chrome, Edge or Brave lists the error `'background.scripts' requires manifest version of 2 or lower` | The extension is installed and works. The message appears when the `extension` folder is loaded from the source; that key is there for Firefox. `desktop-gifs-chromium.zip` does not have it. |
@@ -141,7 +152,7 @@ When you pick a GIF, the content script attaches it to the comment box. When you
 | --- | --- | --- |
 | `src/content.js`, `src/content.css` | YouTube page, isolated world | Adds the GIF button and the picker |
 | `src/main.js` | YouTube page, main world | Rewrites the comment request so it carries the GIF |
-| `src/sw.js` | Service worker (background script in Firefox) | Fetches G-rated search results from Tenor; on install, adds the two scripts above to YouTube tabs that are already open |
+| `src/sw.js` | Service worker (background script in Firefox) | Fetches G-rated search results from Tenor; checks GitHub for a newer release; on install, update or reload, adds the two scripts above to YouTube tabs that are already open, where they take over from the old copies |
 
 There is no build step and there are no dependencies: the `extension` folder is the extension. `python3 tools/package.py` writes the two release ZIPs, which are that folder with the other browser's background key taken out of the manifest.
 
@@ -149,10 +160,10 @@ There is no build step and there are no dependencies: the `extension` folder is 
 
 ## Privacy
 
-- **YouTube and Tenor, nothing else:** `youtube.com`, where it adds the button, and for search `tenor.com` and Tenor's API at `tenor.googleapis.com`.
+- **YouTube, Tenor and GitHub, nothing else:** `youtube.com`, where it adds the button; for search `tenor.com` and Tenor's API at `tenor.googleapis.com`; and, at most once a day when the picker opens, this repository's latest release at `api.github.com`, to say when a new version is out.
 - **Nothing collected.** No analytics, no account.
-- **Favorites stay in your browser.** They are kept in the extension's own local storage and are not sent anywhere.
-- **Search goes to Tenor without your cookies**, and GIF previews load from Tenor's media servers.
+- **Favorites stay in your browser.** They are kept in the extension's own local storage and are not sent anywhere. So are the key Tenor's pages give out for its API, and the last release version seen.
+- **Search goes to Tenor without your cookies**, and GIF previews load from Tenor's media servers. The release check goes to GitHub without cookies too.
 - **Your YouTube credentials are never read.** YouTube's own page sends the comment.
 
 ## License

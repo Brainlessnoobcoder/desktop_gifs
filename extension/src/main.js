@@ -6,11 +6,28 @@
 // page submit it. That way the page supplies the auth headers, context and
 // attestation. The hook strips the marker and adds the GIF in its place.
 (() => {
-  // sw.js also injects this file into tabs that were open before the install;
-  // a page must not end up with two wrappers.
-  const LOADED = Symbol.for('gcfy.hook');
-  if (window[LOADED]) return;
-  window[LOADED] = true;
+  // sw.js also injects this file into YouTube tabs that are already open when
+  // the extension is installed, updated or reloaded. The page keeps one fetch
+  // wrapper for good, since YouTube may hold on to it; the wrapper hands every
+  // call to the newest copy of this file, and each copy retires the one before.
+  const HOOK = Symbol.for('gcfy.hook');
+  // 0.1.5 and older marked the page with true and cannot hand over. They take
+  // the same messages, so that copy keeps working until the tab is refreshed.
+  if (window[HOOK] === true) return;
+  let hook = window[HOOK];
+  if (!hook) {
+    // At document_start the wrapper is in place before any of YouTube's code.
+    // Injected into a page that has already loaded, it only works if YouTube
+    // looks window.fetch up at call time, so it does not count as live until
+    // one of YouTube's own API requests has come through it. Until then arming
+    // is refused, and the content script never types a marker into the box.
+    hook = { current: null, live: document.readyState === 'loading', originalFetch: window.fetch };
+    Object.defineProperty(window, HOOK, { value: hook });
+    window.fetch = function (input, init) {
+      return hook.current.fetch(this, arguments);
+    };
+  }
+  if (hook.current) hook.current.retire();
 
   // Every endpoint a ytd-commentbox can submit to (comments, replies, edits,
   // channel posts). Only the two create endpoints are ever rewritten; a marker
@@ -29,28 +46,22 @@
   // nonce -> { id, ratedG, expires }
   const armed = new Map();
 
-  // At document_start the wrapper is in place before any of YouTube's code.
-  // Injected into a page that has already loaded, it only works if YouTube
-  // looks window.fetch up at call time, so it does not count as live until one
-  // of YouTube's own API requests has come through it. Until then arming is
-  // refused, and the content script never types a marker into the box.
-  let live = document.readyState === 'loading';
-
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const toContent = (msg) => window.postMessage({ gcfy: 'to-content', ...msg }, location.origin);
 
-  window.addEventListener('message', (e) => {
+  function onMessage(e) {
     if (e.source !== window || e.origin !== location.origin) return;
     const msg = e.data;
     if (!msg || msg.gcfy !== 'to-main') return;
     if (msg.type === 'arm' && /^\d{1,20}$/.test(msg.id) && /^[a-z0-9]{8,32}$/.test(msg.nonce)) {
-      if (!live) { toContent({ type: 'refused', nonce: msg.nonce }); return; }
+      if (!hook.live) { toContent({ type: 'refused', nonce: msg.nonce }); return; }
       armed.set(msg.nonce, { id: msg.id, ratedG: msg.ratedG === true, expires: Date.now() + ARM_TTL_MS });
       toContent({ type: 'armed', nonce: msg.nonce });
     } else if (msg.type === 'disarm') {
       armed.delete(msg.nonce);
     }
-  });
+  }
+  window.addEventListener('message', onMessage);
 
   async function readBody(input, init) {
     const isRequest = input instanceof Request;
@@ -67,16 +78,25 @@
     return { headers, text };
   }
 
-  const originalFetch = window.fetch;
+  const { originalFetch } = hook;
 
-  window.fetch = function (input, init) {
-    let url = '';
-    try {
-      url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-    } catch (e) { /* fall through to the original fetch */ }
-    if (!live && API_URL.test(url)) live = true;
-    if (!WATCHED_URL.test(url)) return originalFetch.apply(this, arguments);
-    return handleWatched.call(this, url, input, init, arguments);
+  // A request this copy is already handling finishes here; only new ones go
+  // to the copy that replaces it.
+  hook.current = {
+    fetch(self, args) {
+      const [input, init] = args;
+      let url = '';
+      try {
+        url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      } catch (e) { /* fall through to the original fetch */ }
+      if (!hook.live && API_URL.test(url)) hook.live = true;
+      if (!WATCHED_URL.test(url)) return originalFetch.apply(self, args);
+      return handleWatched.call(self, url, input, init, args);
+    },
+    retire() {
+      window.removeEventListener('message', onMessage);
+      armed.clear();
+    },
   };
 
   async function handleWatched(url, input, init, originalArgs) {

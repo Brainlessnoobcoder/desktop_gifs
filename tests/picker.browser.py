@@ -49,6 +49,73 @@ class PickerTests(unittest.TestCase):
         self.assertEqual(self.page.evaluate('stats.pickerBubble'), [])
         self.assertEqual(self.page.evaluate('stats.outsideFocus'), 0)
 
+    def inject_newer_copy(self):
+        """What sw.js does when the extension is updated or reloaded."""
+        self.page.add_style_tag(path=str(ROOT / 'extension/src/content.css'))
+        self.page.add_script_tag(path=str(self.source))
+
+    def test_newer_copy_keeps_the_text_and_attached_gif_and_posts_once(self):
+        editor = self.page.locator('#modal-box #contenteditable-root')
+        editor.fill('My reply')
+        self.open_picker()
+        self.page.locator('.tile').nth(1).click()
+        self.inject_newer_copy()
+        self.page.locator('#modal-box .gcfy-attachment').wait_for(state='visible')
+        for box in ('modal-box', 'inline-box'):
+            self.assertEqual(self.page.locator(f'#{box} .gcfy-btn').count(), 1)
+        self.assertEqual(self.page.locator('#modal-box .gcfy-attachment').count(), 1)
+        self.assertEqual(self.page.locator('#modal-box .gcfy-attachment img').get_attribute('alt'), 'Second GIF')
+        self.assertEqual(editor.inner_text(), 'My reply')
+        self.page.locator('#modal-box #submit-button button').click()
+        self.page.locator('#modal-box .gcfy-attachment').wait_for(state='detached')
+        posts = self.page.evaluate('stats.posts')
+        self.assertEqual(len(posts), 1)
+        self.assertIn('My reply[[gif:12696714748418769445:', posts[0]['text'])
+        self.assertEqual(len(self.page.evaluate('stats.arms')), 1)
+        self.assert_modal_open()
+
+    def test_newer_copy_replaces_an_open_picker_and_its_buttons_work(self):
+        self.open_picker()
+        self.inject_newer_copy()
+        self.assertEqual(self.page.locator('[data-gcfy-picker]').count(), 0)
+        self.open_picker()
+        self.assertEqual(self.page.get_by_role('dialog', name='Choose a GIF').count(), 1)
+        self.page.locator('.tile').first.click()
+        self.assertEqual(self.page.locator('#modal-box .gcfy-attachment').count(), 1)
+        # The fixture's 1x1 previews leave the button clipped, so it is clicked directly.
+        self.page.locator('#modal-box .gcfy-attachment-remove').dispatch_event('click')
+        self.assertEqual(self.page.locator('#modal-box .gcfy-attachment').count(), 0)
+        self.assert_modal_open()
+
+    def test_gif_without_text_stays_postable_after_a_newer_copy(self):
+        self.open_picker('inline-box')
+        self.page.locator('.tile').first.click()
+        submit = self.page.locator('#inline-box #submit-button button')
+        self.assertTrue(submit.is_enabled())
+        self.inject_newer_copy()
+        self.assertTrue(submit.is_enabled())
+        submit.click()
+        self.page.locator('#inline-box .gcfy-attachment').wait_for(state='detached')
+        self.assertEqual(len(self.page.evaluate('stats.posts')), 1)
+
+    def test_update_notice_links_to_the_release_and_can_be_hidden(self):
+        self.open_picker()
+        notice = self.page.locator('.update')
+        self.assertFalse(notice.is_visible())
+        self.page.keyboard.press('Escape')
+
+        self.open_fixture()
+        url = 'https://github.com/rayytor/desktop_gifs/releases/tag/v9.9.9'
+        self.page.evaluate(f"window.release = {{ version: '9.9.9', url: '{url}' }}")
+        self.open_picker()
+        notice.wait_for(state='visible')
+        self.assertIn('Desktop GIFs 9.9.9 is out.', notice.inner_text())
+        self.assertEqual(notice.get_by_role('link', name='Download').get_attribute('href'), url)
+        notice.get_by_role('button', name='Hide until the next version').click()
+        self.assertFalse(notice.is_visible())
+        self.assertEqual(self.page.evaluate('storedItems.dismissedUpdate'), '9.9.9')
+        self.assert_modal_open()
+
     def test_search_favorites_and_pointer_events_keep_reply_open(self):
         self.open_picker()
         search = self.page.get_by_role('textbox', name='Search Tenor or paste a Tenor link')

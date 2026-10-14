@@ -83,11 +83,15 @@
     { id: '12696714748418769445', title: 'Second GIF', width: 120, height: 80 },
   ].map((gif) => ({ ...gif, contentRating: 'G', preview: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' }));
   let favorites = [];
+  // Everything else content.js keeps in storage.
+  window.storedItems = {};
   const storageListeners = [];
   window.chrome = {
     runtime: {
       async sendMessage(message) {
         stats.requests.push(message);
+        // window.release: the newer release the worker reports, if any.
+        if (message.type === 'update') return { ok: true, release: window.release || null };
         if (message.type === 'check' && window.checkFailure) return { ok: false, error: window.checkFailure };
         if (message.type === 'check' && window.delayCheck) await new Promise((resolve) => { window.finishCheck = resolve; });
         // window.checkRating: the rating Tenor reports when content.js checks a GIF.
@@ -102,8 +106,11 @@
     },
     storage: {
       local: {
-        async get() { return { favorites }; },
+        async get(key) { return key === 'favorites' ? { favorites } : { [key]: window.storedItems[key] }; },
         async set(items) {
+          const { favorites: _, ...rest } = items;
+          Object.assign(window.storedItems, rest);
+          if (!('favorites' in items)) return;
           const oldValue = favorites;
           favorites = items.favorites;
           for (const listener of storageListeners) listener({ favorites: { oldValue, newValue: favorites } }, 'local');

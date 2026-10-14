@@ -13,11 +13,12 @@ const marker = `[[gif:${id}:${nonce}]]`;
 const invalid = { error: { status: 'INVALID_ARGUMENT', message: 'Request contains an invalid argument.' } };
 const success = { actionResult: { status: 'STATUS_SUCCEEDED' } };
 
-function hook(reply = { actionResult: { status: 'STATUS_SUCCEEDED' } }, status = 200, retryReply, retryStatus = 200) {
+function hook(reply = { actionResult: { status: 'STATUS_SUCCEEDED' } }, status = 200, retryReply, retryStatus = 200, preload = false) {
   const messages = [];
   const requests = [];
   const warnings = [];
   let onMessage;
+  const listeners = new Set();
   const response = new Response(typeof reply === 'string' ? reply : JSON.stringify(reply), { status });
   const responses = [response];
   if (retryReply !== undefined) responses.push(new Response(typeof retryReply === 'string' ? retryReply : JSON.stringify(retryReply), { status: retryStatus }));
@@ -26,18 +27,23 @@ function hook(reply = { actionResult: { status: 'STATUS_SUCCEEDED' } }, status =
       requests.push(new Request(input, init));
       return responses[Math.min(requests.length - 1, responses.length - 1)];
     },
-    addEventListener: (type, listener) => { if (type === 'message') onMessage = listener; },
+    addEventListener: (type, listener) => { if (type === 'message') { onMessage = listener; listeners.add(listener); } },
+    removeEventListener: (type, listener) => { if (type === 'message') listeners.delete(listener); },
     postMessage: (message) => messages.push(message),
   };
-  vm.runInNewContext(source, {
-    window, location: { origin }, document: { readyState: 'loading' },
+  const document = { readyState: 'loading' };
+  // Runs one more copy of main.js in the same page, as sw.js does after an
+  // update or a reload.
+  const load = () => vm.runInNewContext(source, {
+    window, location: { origin }, document,
     Request, Response, Headers, Blob, DecompressionStream, TextDecoder,
     console: { warn: (...args) => warnings.push(args) },
     // Retry delays elapse at once, so the tests do not wait for them.
     setTimeout: (callback) => setTimeout(callback, 0),
   });
+  if (!preload) load();
   return {
-    window, response, responses, requests, messages, warnings,
+    window, response, responses, requests, messages, warnings, listeners, document, load,
     arm: (rated = false) => onMessage({ source: window, origin, data: { gcfy: 'to-main', type: 'arm', id, nonce, ratedG: rated } }),
     result: () => messages.findLast((message) => message.type === 'result'),
     send: (text = `hello ${marker}`, url = create) => window.fetch(url, {
@@ -258,3 +264,38 @@ for (const [label, reply, status] of [
     assert.equal(h.requests[0].headers.has('X-YouTube-Client-Name'), false);
   });
 }
+
+test('a copy injected after an update takes over the fetch wrapper the page already has', async () => {
+  const h = hook();
+  const wrapper = h.window.fetch;
+  h.document.readyState = 'complete';
+  h.load();
+  // YouTube may hold on to the first wrapper, so it stays and is not wrapped again.
+  assert.equal(h.window.fetch, wrapper);
+  assert.equal(h.listeners.size, 1);
+  // The page was live before the update, so the new copy is too.
+  h.arm();
+  assert.equal(h.messages.at(-1).type, 'armed');
+  await h.send();
+  assert.equal(h.requests.length, 1);
+  assert.equal((await h.requests[0].json()).tenorId, id);
+  assert.equal(h.messages.filter((m) => m.type === 'result').length, 1);
+  assert.equal(h.result().ok, true);
+});
+
+test('a GIF armed with a copy that was replaced is not posted', async () => {
+  const h = hook();
+  h.arm();
+  h.load();
+  await assert.rejects(h.send(), /marker blocked/);
+  assert.equal(h.requests.length, 0);
+});
+
+test('a hook left by 0.1.5 or older stays in charge', () => {
+  const h = hook(undefined, 200, undefined, 200, true);
+  h.window[Symbol.for('gcfy.hook')] = true;
+  const fetch = h.window.fetch;
+  h.load();
+  assert.equal(h.window.fetch, fetch);
+  assert.equal(h.listeners.size, 0);
+});
