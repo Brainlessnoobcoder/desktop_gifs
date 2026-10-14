@@ -382,12 +382,13 @@
       tile.dataset.index = String(i);
       tile.title = gif.title;
       const img = document.createElement('img');
+      // Before src: changing these afterwards loads the GIF again.
+      img.referrerPolicy = 'no-referrer';
+      img.loading = 'lazy';
       img.src = gif.preview;
       img.alt = gif.title;
       img.width = gif.width;
       img.height = gif.height;
-      img.loading = 'lazy';
-      img.referrerPolicy = 'no-referrer';
       tile.append(img);
       const star = document.createElement('button');
       star.type = 'button';
@@ -543,11 +544,12 @@
     const frame = document.createElement('div');
     frame.className = 'gcfy-attachment-gif';
     const img = document.createElement('img');
+    // Before src: changing the referrer policy afterwards loads the GIF again.
+    img.referrerPolicy = 'no-referrer';
     img.src = gif.preview;
     img.alt = gif.title;
     img.width = gif.width;
     img.height = gif.height;
-    img.referrerPolicy = 'no-referrer';
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'gcfy-attachment-remove';
