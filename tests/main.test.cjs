@@ -109,14 +109,14 @@ test('INVALID_ARGUMENT for a G-rated GIF is retried, then blamed on YouTube, not
   const h = hook(invalid, 400);
   h.arm(true);
   const returned = await h.send();
-  assert.equal(h.requests.length, 3);
+  assert.equal(h.requests.length, 12);
   assert.equal(returned.status, 400);
   for (const request of h.requests) assert.equal((await request.json()).tenorId, id);
-  assert.deepEqual(h.messages.filter((m) => m.type === 'retrying').map((m) => [m.attempt, m.tries]), [[2, 3], [3, 3]]);
+  assert.deepEqual(h.messages.filter((m) => m.type === 'retrying').map((m) => [m.attempt, m.tries]), Array.from({ length: 11 }, (_, i) => [i + 2, 12]));
   assert.equal(h.result().ok, false);
-  assert.match(h.result().error, /not taking GIF comments from desktop .* \(tried 3 times\)\. The GIF is not the cause/);
+  assert.match(h.result().error, /not taking GIF comments from desktop .* \(tried 12 times\)\. The GIF is not the cause/);
   assert.doesNotMatch(h.result().error, /different one/);
-  assert.equal(JSON.parse(h.warnings[0][1]).tries, 3);
+  assert.equal(JSON.parse(h.warnings[0][1]).tries, 12);
 });
 
 test('a G-rated GIF blocked once and then accepted is posted on the second try', async () => {

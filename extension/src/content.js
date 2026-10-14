@@ -26,7 +26,7 @@
   const ARM_TIMEOUT_MS = 1500;
   const SUBMIT_GRACE_MS = 4000;
   // Long enough for main.js to try a blocked GIF comment again.
-  const RESULT_TIMEOUT_MS = 30000;
+  const RESULT_TIMEOUT_MS = 60000;
   // How long a post waits for Tenor to rate a GIF picked without a rating.
   const CHECK_TIMEOUT_MS = 5000;
   const NO_FAVORITES = 'No favorites yet. Point at a GIF and click its star.';
