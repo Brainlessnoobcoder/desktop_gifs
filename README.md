@@ -29,6 +29,11 @@
   <img src="screenshots/picker.png" width="720" alt="The GIF picker open above a comment box, showing search results for &quot;cat&quot;, one of them starred as a favorite">
 </p>
 
+> [!WARNING]
+> **Posting GIFs is broken right now.** Since 14 October 2026 YouTube refuses GIF comments sent from desktop. For most people every try fails, whether it has text or not, and whether it is a comment or a reply. The cause is on YouTube's side. Reinstalling, updating or picking another GIF will not fix it. Searching and the picker still work.
+>
+> I have not found a way around it yet. **If you find one, open a pull request and I will review and merge it.** What is known so far, and where to report, is in [#93](https://github.com/rayytor/desktop_gifs/issues/93). Please add to that issue instead of opening a new one.
+
 YouTube's mobile app can attach a GIF to a comment; the desktop site has no button for it. Desktop GIFs adds one, next to the emoji button:
 
 <p align="center">
@@ -117,9 +122,9 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 | "The page hook is not running" or "The extension was reloaded" | Refresh the YouTube tab. |
 | "The GIF was not sent" | YouTube did not send the comment. Press its Comment button again. |
 | The post fails | Nothing is published, and your text and the GIF stay in the box. Try again. |
-| "YouTube is not taking GIF comments from desktop for your account or network right now" | Since 14 October 2026 YouTube turns down many GIF comments sent from desktop, seemingly at random. The extension already tried up to twelve times. The GIF is not the cause, so picking another one will not help. Your text and the GIF stay in the box; try again later. The YouTube phone app may still post GIFs from the same account. |
+| "YouTube is refusing GIF comments sent from desktop" | Since 14 October 2026 YouTube turns down GIF comments sent from desktop. At first it refused some at random; now, for many people, it refuses every one, GIF only or with text, comment or reply. People report that it depends on where they connect from. The extension already tried up to twelve times. The GIF is not the cause, so picking another one will not help. Your text and the GIF stay in the box. The YouTube phone app may still post GIFs from the same account. |
 | "YouTube turned it down. Trying again…" | YouTube blocked the comment and the extension is retrying on its own. Wait for it to finish; there is no need to click again. |
-| "Either Tenor does not rate the GIF G, or YouTube is not taking GIF comments" | Tenor could not be asked for the GIF's rating, so the extension does not know which one it is. Try a GIF from the picker's search results: those are rated G. |
+| "Either Tenor does not rate the GIF G, or YouTube is refusing GIF comments" | Tenor could not be asked for the GIF's rating, so the extension does not know which one it is. Try a GIF from the picker's search results: those are rated G. |
 | "YouTube does not accept this GIF" | YouTube looked the GIF up and will not take it. Pick a different GIF. |
 | "YouTube only takes GIFs that Tenor rates G" | The GIF has another rating on Tenor. The extension checks a pasted link when you pick it, and a favorite or a GIF without a rating just before posting. Pick a different GIF. |
 | "Checking the GIF…" | The GIF was picked without a rating, so the extension asks Tenor for it before posting. This takes at most five seconds; if Tenor does not answer, the comment is posted anyway. |
@@ -138,7 +143,7 @@ If posting keeps failing, open the browser's developer tools and look for **Desk
 
 - **Unofficial.** This project is not affiliated with YouTube, Google or Tenor. It sends a field that YouTube's desktop site does not use itself, so it can stop working whenever YouTube changes something, and using it is at your own risk under YouTube's Terms of Service.
 - **Tenor only.** YouTube's GIF comments take Tenor GIFs, so a GIF file from your computer cannot be posted.
-- **YouTube turns many tries down.** Since 14 October 2026 YouTube refuses many GIF comments sent from desktop, seemingly at random: the very same comment, sent again, often goes through. When it blocks a G-rated GIF, the extension tries up to twelve times in about half a minute, then stops, so posting can take a while. A blocked try posts nothing, so a retry never posts twice. Some people also report GIF comments posted from desktop being removed a few seconds later.
+- **YouTube is blocking GIF comments from desktop.** Since 14 October 2026 YouTube refuses GIF comments sent from desktop. At first it refused some at random and a second try often went through; now, for most people, it refuses every one. See [#93](https://github.com/rayytor/desktop_gifs/issues/93). When it blocks a G-rated GIF, the extension tries up to twelve times in about half a minute, then stops, so posting can take a while. A blocked try posts nothing, so a retry never posts twice. Some people also report GIF comments posted from desktop being removed a few seconds later.
 - **G-rated GIFs only.** YouTube turns down every GIF that Tenor does not rate G, so the picker shows only those, and a pasted link to any other GIF is not offered.
 - **Search depends on Tenor's website.** Tenor closed its public API in June 2026. Search and ratings come from the API that tenor.com itself uses, with the key its pages carry, and fall back to the results in Tenor's web pages, which have no ratings. Either can break when Tenor changes its site.
 - **GIFs only.** Stickers and still images are left out of the results.

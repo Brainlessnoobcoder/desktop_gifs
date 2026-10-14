@@ -102,7 +102,7 @@ test('INVALID_ARGUMENT for a GIF of unknown rating names both causes and is not 
   await h.send();
   assert.equal(h.requests.length, 1);
   assert.equal(h.result().ok, false);
-  assert.match(h.result().error, /Either Tenor does not rate the GIF G, or YouTube is not taking GIF comments from desktop/);
+  assert.match(h.result().error, /Either Tenor does not rate the GIF G, or YouTube is refusing GIF comments sent from desktop/);
 });
 
 test('INVALID_ARGUMENT for a G-rated GIF is retried, then blamed on YouTube, not the GIF', async () => {
@@ -114,7 +114,7 @@ test('INVALID_ARGUMENT for a G-rated GIF is retried, then blamed on YouTube, not
   for (const request of h.requests) assert.equal((await request.json()).tenorId, id);
   assert.deepEqual(h.messages.filter((m) => m.type === 'retrying').map((m) => [m.attempt, m.tries]), Array.from({ length: 11 }, (_, i) => [i + 2, 12]));
   assert.equal(h.result().ok, false);
-  assert.match(h.result().error, /not taking GIF comments from desktop .* \(tried 12 times\)\. The GIF is not the cause/);
+  assert.match(h.result().error, /refusing GIF comments sent from desktop \(tried 12 times\)\. The GIF is not the cause/);
   assert.doesNotMatch(h.result().error, /different one/);
   assert.equal(JSON.parse(h.warnings[0][1]).tries, 12);
 });

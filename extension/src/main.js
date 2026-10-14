@@ -37,10 +37,13 @@
   const CREATE_URL = /\/youtubei\/v1\/comment\/create_comment(_reply)?(\?|$)/;
   const MARKER = /\[\[gif:(\d{1,20}):([a-z0-9]{8,32})\]\]/;
   const ARM_TTL_MS = 3 * 60 * 1000;
-  // Since 14 October 2026 YouTube turns down many GIF comments from desktop
-  // with HTTP 400, after it has accepted the GIF itself. It looks random: the
-  // very same request, sent again, was refused about two times in three and
-  // sometimes six times in a row before it went through. So a blocked one gets
+  // Since 14 October 2026 YouTube turns down GIF comments from desktop with
+  // HTTP 400. At first the very same request, sent again, was refused about
+  // two times in three. Later that day every request with a tenorId was
+  // refused, before YouTube even looked the GIF up: real or made-up ID, with
+  // or without text, comment or reply. Text comments in the same requests
+  // still validated, and no other request field carries a GIF. People report
+  // that it depends on where they connect from, so a blocked one still gets
   // up to twelve tries in about half a minute. A blocked request posts
   // nothing, so trying again cannot post twice.
   const RETRY_DELAYS_MS = [1000, 1500, 2000, 2000, 2500, 2500, 3000, 3000, 3000, 3000, 3000];
@@ -169,8 +172,8 @@
         ? `YouTube turned this GIF comment down:${said} Nothing was posted.`
         : 'YouTube does not accept this GIF. Try a different one. Nothing was posted.')
       : verdict.kind === 'blocked' ? (entry.ratedG
-        ? `YouTube is not taking GIF comments from desktop for your account or network right now (tried ${tries} times). The GIF is not the cause, so another one will not help. Try again later. Nothing was posted.`
-        : 'YouTube turned this GIF comment down. Either Tenor does not rate the GIF G, or YouTube is not taking GIF comments from desktop for your account or network right now. Nothing was posted.')
+        ? `YouTube is refusing GIF comments sent from desktop (tried ${tries} times). The GIF is not the cause, so another one will not help. This changed on YouTube's side; the YouTube phone app may still post GIFs. Nothing was posted.`
+        : 'YouTube turned this GIF comment down. Either Tenor does not rate the GIF G, or YouTube is refusing GIF comments sent from desktop. Nothing was posted.')
       : verdict.kind === 'rejected' ? `YouTube rejected this GIF comment (${detail}).${said} Nothing was posted.`
       : `YouTube did not confirm this GIF comment (${detail}).${said} Check the comments before trying again.`;
     if (verdict.kind !== 'posted') {
