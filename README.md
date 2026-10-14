@@ -36,7 +36,7 @@ YouTube's mobile app can attach a GIF to a comment; the desktop site has no butt
 </p>
 
 - **Everyone sees your GIF.** It is posted as an ordinary YouTube GIF comment, so viewers do not need the extension.
-- **Three clicks.** Open a comment box, click **GIF**, click the one you want.
+- **Write around it.** Pick a GIF, keep typing, then post with YouTube's own Comment button.
 - **Search or paste.** Search Tenor, or paste a Tenor link.
 - **Favorites.** Star the GIFs you use often and find them behind one button.
 - **Nothing to set up.** No account, no API key, no tracking.
@@ -81,9 +81,10 @@ The `extension` folder of this repository is the extension, and it loads in both
 
 1. On a video or a Short, click **Add a comment…** or **Reply**.
 2. Click the **GIF** button next to the emoji button.
-3. Click a GIF. **It is posted straight away**, there is no preview step.
+3. Click a GIF. It is attached to the comment box, below your text.
+4. Write or edit your text, then click **Comment** (or press <kbd>Ctrl</kbd>+<kbd>Enter</kbd>).
 
-Anything you typed in the comment box is posted together with the GIF.
+The text in the comment box is posted together with the GIF. A comment can also be just the GIF. To take the GIF off, click the **×** in its corner; picking another GIF replaces it.
 
 The picker opens with Tenor's featured GIFs. To find another one:
 
@@ -94,7 +95,8 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 
 | Key | What it does |
 | --- | --- |
-| <kbd>Enter</kbd> | In the search field, posts the GIF when the picker shows exactly one, as it does after pasting a link |
+| <kbd>Enter</kbd> | In the search field, attaches the GIF when the picker shows exactly one, as it does after pasting a link |
+| <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | In a comment box with a GIF attached, posts the comment |
 | <kbd>Esc</kbd> | Closes the picker |
 
 ## Troubleshooting
@@ -104,8 +106,8 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 | No **GIF** button in the comment box | Refresh the YouTube tab. |
 | "Not ready in this tab yet" | The tab was open before the install and the extension is still checking that it can post from it. Try again in a few seconds, or refresh the tab. |
 | "The page hook is not running" or "The extension was reloaded" | Refresh the YouTube tab. |
-| "Press Comment to send the GIF" | YouTube did not send the comment by itself. Press its Comment button. |
-| The post fails | Nothing is published and your text stays in the box. Try again. |
+| "The GIF was not sent" | YouTube did not send the comment. Press its Comment button again. |
+| The post fails | Nothing is published, and your text and the GIF stay in the box. Try again. |
 | "YouTube does not accept this GIF" | YouTube only takes GIFs that Tenor rates G, its rating for all audiences. The picker leaves the others out, but one can get through when Tenor's ratings cannot be read. Pick a different GIF. |
 | "YouTube only takes GIFs that Tenor rates G" | The link you pasted points at a GIF with another rating. Pick a different GIF. |
 | "YouTube did not accept this GIF comment" | YouTube turned the comment down without giving a reason. Try another GIF or another video. |
@@ -125,7 +127,7 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 
 ## How it works
 
-When you pick a GIF, the content script adds a one-time marker to the comment box and presses YouTube's own Comment button. YouTube builds and signs the request as usual. The main-world script catches that request, removes the marker and adds the GIF's Tenor ID. A marker that cannot be turned into a GIF is blocked, so it never appears as comment text.
+When you pick a GIF, the content script attaches it to the comment box. When you press Comment, it adds a one-time marker to the end of your text and lets YouTube's own Comment button go through. YouTube builds and signs the request as usual. The main-world script catches that request, removes the marker and adds the GIF's Tenor ID. A marker that cannot be turned into a GIF is blocked, so it never appears as comment text.
 
 | File | Runs in | Job |
 | --- | --- | --- |

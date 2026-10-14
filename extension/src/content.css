@@ -51,3 +51,75 @@ html[dark] .gcfy-btn[aria-expanded="true"] {
 html[dark] .gcfy-btn:focus-visible {
   outline-color: #3ea6ff;
 }
+
+/* The GIF attached to a comment box, shown between the text and the buttons
+   until the comment is posted. */
+.gcfy-attachment {
+  margin: 8px 0 0;
+  font: 12px/1.4 Roboto, Arial, sans-serif;
+  color: #606060;
+}
+
+html[dark] .gcfy-attachment {
+  color: #aaa;
+}
+
+.gcfy-attachment-gif {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.gcfy-attachment-gif img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 200px;
+  max-height: 120px;
+}
+
+.gcfy-attachment[data-busy] .gcfy-attachment-gif {
+  opacity: 0.6;
+}
+
+.gcfy-attachment-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font: 16px/1 Arial, sans-serif;
+  cursor: pointer;
+}
+
+.gcfy-attachment[data-busy] .gcfy-attachment-remove {
+  display: none;
+}
+
+.gcfy-attachment-remove:focus-visible {
+  outline: 2px solid #3ea6ff;
+  outline-offset: 1px;
+}
+
+.gcfy-attachment-status:empty {
+  display: none;
+}
+
+.gcfy-attachment-status {
+  margin-top: 4px;
+}
+
+.gcfy-attachment-status[data-kind="error"] {
+  color: #c00;
+}
+
+html[dark] .gcfy-attachment-status[data-kind="error"] {
+  color: #ff7b7b;
+}

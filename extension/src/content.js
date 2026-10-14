@@ -1,6 +1,7 @@
 // Isolated-world content script: adds a GIF button to YouTube's comment boxes,
-// shows the picker, and hands the chosen GIF to the page-world hook (main.js)
-// by submitting a one-time marker through YouTube's own comment box.
+// shows the picker, attaches the chosen GIF to the box, and when the user posts
+// hands it to the page-world hook (main.js) by submitting a one-time marker
+// through YouTube's own comment box.
 (() => {
   // sw.js also injects this file into tabs that were open before the install;
   // a tab must not end up with two copies.
@@ -13,7 +14,7 @@
   const PICKER_H = 420;
   const SEARCH_DEBOUNCE_MS = 350;
   const ARM_TIMEOUT_MS = 1500;
-  const AUTO_SUBMIT_GRACE_MS = 4000;
+  const SUBMIT_GRACE_MS = 4000;
   const RESULT_TIMEOUT_MS = 20000;
   const NO_FAVORITES = 'No favorites yet. Point at a GIF and click its star.';
 
@@ -81,7 +82,6 @@
     }
     .cell:hover .star, .star:focus-visible, .star[aria-pressed="true"] { opacity: 1; }
     .star[aria-pressed="true"] { color: #ffd45c; }
-    .panel[data-busy] .cell { pointer-events: none; opacity: .45; }
   `;
 
   // ---------------------------------------------------------------- page hook
@@ -143,7 +143,7 @@
 
   // ------------------------------------------------------------------ picker
 
-  const picker = { open: false, busy: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null, favorites: [], showingFavorites: false };
+  const picker = { open: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null, favorites: [], showingFavorites: false };
 
   function buildPicker() {
     const host = document.createElement('div');
@@ -201,7 +201,7 @@
       const star = e.target.closest('.star');
       const tile = e.target.closest('.tile');
       if (star) toggleFavorite(picker.gifs[Number(star.dataset.index)]);
-      else if (tile && !picker.busy) send(picker.gifs[Number(tile.dataset.index)]);
+      else if (tile) attach(picker.gifs[Number(tile.dataset.index)]);
     });
 
     picker.host = host;
@@ -212,11 +212,6 @@
     picker.els.status.textContent = text || '';
     if (kind) picker.els.status.dataset.kind = kind;
     else delete picker.els.status.dataset.kind;
-  }
-
-  function setBusy(busy) {
-    picker.busy = busy;
-    picker.els.panel.toggleAttribute('data-busy', busy);
   }
 
   function place() {
@@ -241,7 +236,6 @@
     anchor.setAttribute('aria-expanded', 'true');
     picker.els.panel.toggleAttribute('data-dark', document.documentElement.hasAttribute('dark'));
     document.documentElement.append(picker.host);
-    setBusy(false);
     place();
     picker.els.input.focus();
     load(picker.els.input.value);
@@ -254,7 +248,7 @@
     picker.seq++;
     picker.anchor.setAttribute('aria-expanded', 'false');
     picker.host.remove();
-    if (picker.anchor.isConnected && !picker.busy) picker.anchor.focus();
+    if (picker.anchor.isConnected) picker.anchor.focus();
   }
 
   const looksLikeLink = (text) => /^\d{6,20}$/.test(text) || /^(https?:\/\/)?([\w-]+\.)*tenor\.com\//i.test(text);
@@ -348,7 +342,7 @@
     picker.favorites = (Array.isArray(stored) ? stored : []).filter((g) => g
       && typeof g.id === 'string' && typeof g.title === 'string' && typeof g.preview === 'string'
       && g.width > 0 && g.height > 0);
-    if (!picker.open || picker.busy) return;
+    if (!picker.open) return;
     if (picker.showingFavorites) renderFavorites(true);
     else for (const star of picker.els.grid.querySelectorAll('.star')) setStar(star, picker.gifs[Number(star.dataset.index)]);
   }
@@ -414,17 +408,120 @@
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  async function send(gif) {
+  // ------------------------------------------------------------- attachments
+
+  // Picking a GIF only attaches it to its comment box. The marker is added when
+  // the user presses YouTube's Comment button, so they can keep editing their
+  // text until then.
+  const attachments = new Map(); // ytd-commentbox -> { gif, chip, status, observer, posting }
+  let passThrough = false;
+
+  // YouTube greys its Comment button out by swapping its style class for a
+  // disabled one: [disabled, enabled], current and older class names.
+  const BUTTON_STYLES = [
+    ['ytSpecButtonShapeNextDisabled', 'ytSpecButtonShapeNextMono'],
+    ['yt-spec-button-shape-next--disabled', 'yt-spec-button-shape-next--mono'],
+  ];
+  const submitOf = (box) => box.querySelector('#submit-button button');
+  const editorOf = (box) => box.querySelector('#contenteditable-root');
+
+  function attach(gif) {
     const box = picker.box;
-    const editor = box && box.isConnected && box.querySelector('#contenteditable-root');
-    const submit = box && box.querySelector('#submit-button button');
-    if (!editor || !submit) {
+    const footer = box && box.isConnected && box.querySelector('#footer');
+    const editor = footer && editorOf(box);
+    if (!editor) {
       setStatus('The comment box was closed. Open it and try again.', 'error');
       return;
     }
+    const old = attachments.get(box);
+    if (old && old.posting) return;
+    detach(box, false);
+
+    const chip = document.createElement('div');
+    chip.className = 'gcfy-attachment';
+    const frame = document.createElement('div');
+    frame.className = 'gcfy-attachment-gif';
+    const img = document.createElement('img');
+    img.src = gif.preview;
+    img.alt = gif.title;
+    img.width = gif.width;
+    img.height = gif.height;
+    img.referrerPolicy = 'no-referrer';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'gcfy-attachment-remove';
+    remove.textContent = '×';
+    remove.title = 'Remove the GIF';
+    remove.setAttribute('aria-label', 'Remove the GIF');
+    remove.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!att.posting) detach(box, true);
+    });
+    frame.append(img, remove);
+    const status = document.createElement('div');
+    status.className = 'gcfy-attachment-status';
+    status.setAttribute('role', 'status');
+    chip.append(frame, status);
+    footer.before(chip);
+
+    // YouTube disables its Comment button while the text is empty; a comment
+    // that is only a GIF must still be postable.
+    const observer = new MutationObserver(() => enableSubmit(box));
+    const att = { gif, chip, status, observer, posting: false, greyed: [] };
+    attachments.set(box, att);
+    const submit = submitOf(box);
+    if (submit) observer.observe(submit, { attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'class'] });
+    enableSubmit(box);
+
+    closePicker();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selectRange(editor, range);
+  }
+
+  function enableSubmit(box) {
+    const submit = submitOf(box);
+    const att = attachments.get(box);
+    if (!submit || !att) return;
+    if (submit.disabled) submit.disabled = false;
+    if (submit.hasAttribute('aria-disabled')) submit.removeAttribute('aria-disabled');
+    for (const style of BUTTON_STYLES) {
+      if (!submit.classList.contains(style[0])) continue;
+      submit.classList.replace(style[0], style[1]);
+      if (!att.greyed.includes(style)) att.greyed.push(style);
+    }
+  }
+
+  function detach(box, restoreSubmit) {
+    const att = attachments.get(box);
+    if (!att) return;
+    attachments.delete(box);
+    att.observer.disconnect();
+    att.chip.remove();
+    const submit = submitOf(box);
+    const editor = editorOf(box);
+    if (restoreSubmit && submit && editor && !editor.textContent.trim()) {
+      submit.disabled = true;
+      for (const [disabled, enabled] of att.greyed) submit.classList.replace(enabled, disabled);
+    }
+  }
+
+  function setChipStatus(att, text, kind) {
+    att.status.textContent = text || '';
+    if (kind) att.status.dataset.kind = kind;
+    else delete att.status.dataset.kind;
+  }
+
+  async function post(box) {
+    const att = attachments.get(box);
+    const editor = editorOf(box);
+    const submit = submitOf(box);
+    if (!att || att.posting || !editor || !submit) return;
 
     const nonce = newNonce();
-    const marker = `[[gif:${gif.id}:${nonce}]]`;
+    const marker = `[[gif:${att.gif.id}:${nonce}]]`;
     let settle;
     const settled = new Promise((resolve) => { settle = resolve; });
     let armedAck;
@@ -437,15 +534,16 @@
       else if (msg.type === 'result') settle(msg);
     });
 
-    setBusy(true);
-    setStatus('Posting…');
+    att.posting = true;
+    att.chip.toggleAttribute('data-busy', true);
+    setChipStatus(att, 'Posting…');
     try {
-      toMain({ type: 'arm', id: gif.id, nonce });
+      toMain({ type: 'arm', id: att.gif.id, nonce });
       // Without the page hook the marker would be posted as plain text, so
       // nothing is typed into the box until the hook has answered.
       const armed = await Promise.race([armedPromise, sleep(ARM_TIMEOUT_MS).then(() => false)]);
       if (armed !== true) {
-        setStatus(armed === 'refused'
+        setChipStatus(att, armed === 'refused'
           ? 'Not ready in this tab yet. Try again in a few seconds, or refresh this page.'
           : 'The page hook is not running. Refresh this page and try again.', 'error');
         return;
@@ -453,29 +551,55 @@
 
       appendMarker(editor, marker);
       for (let i = 0; i < 20 && submit.disabled; i++) await sleep(50);
-      submit.click();
+      passThrough = true;
+      try { submit.click(); } finally { passThrough = false; }
 
-      let result = await Promise.race([settled, sleep(AUTO_SUBMIT_GRACE_MS).then(() => null)]);
-      if (!result && !seen) {
-        const label = (submit.getAttribute('aria-label') || submit.textContent || 'Comment').trim();
-        setStatus(`Press ${label} to send the GIF.`);
-      }
-      if (!result) result = await Promise.race([settled, sleep(RESULT_TIMEOUT_MS).then(() => null)]);
+      let result = await Promise.race([settled, sleep(SUBMIT_GRACE_MS).then(() => null)]);
+      if (!result && seen) result = await Promise.race([settled, sleep(RESULT_TIMEOUT_MS).then(() => null)]);
 
       if (result && result.ok) {
-        setBusy(false);
-        closePicker();
+        detach(box, false);
         return;
       }
       // Failed or never sent: take the marker back out of the box.
       toMain({ type: 'disarm', nonce });
       if (editor.isConnected) removeMarker(editor, marker);
-      setStatus((result && result.error) || 'The GIF was not sent. Nothing was posted.', 'error');
+      setChipStatus(att, (result && result.error) || 'The GIF was not sent. Nothing was posted.', 'error');
     } finally {
       fromMain.delete(nonce);
-      setBusy(false);
+      att.posting = false;
+      att.chip.toggleAttribute('data-busy', false);
     }
   }
+
+  const boxIn = (path) => path.find((n) => n.localName === 'ytd-commentbox');
+
+  // Capture phase on window, ahead of YouTube's own handlers: pressing Comment
+  // in a box with a GIF attached posts the GIF instead.
+  window.addEventListener('click', (e) => {
+    if (passThrough) return;
+    const path = e.composedPath();
+    const box = boxIn(path);
+    if (!box || !attachments.has(box)) return;
+    const submit = box.querySelector('#submit-button');
+    const cancel = box.querySelector('#cancel-button');
+    if (submit && path.includes(submit)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      post(box);
+    } else if (cancel && path.includes(cancel) && !attachments.get(box).posting) {
+      detach(box, false);
+    }
+  }, true);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+    const box = boxIn(e.composedPath());
+    if (!box || !attachments.has(box)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    post(box);
+  }, true);
 
   // ------------------------------------------------------- page interactions
 
@@ -492,16 +616,16 @@
       if (e.key === 'Escape') {
         e.preventDefault();
         closePicker();
-      } else if (e.key === 'Enter' && e.composedPath()[0] === picker.els.input && picker.gifs.length === 1 && !picker.busy) {
+      } else if (e.key === 'Enter' && e.composedPath()[0] === picker.els.input && picker.gifs.length === 1) {
         e.preventDefault();
-        send(picker.gifs[0]);
+        attach(picker.gifs[0]);
       }
     }, true);
   }
   window.addEventListener('wheel', (e) => { if (inPicker(e)) e.stopImmediatePropagation(); }, { capture: true, passive: true });
 
   window.addEventListener('pointerdown', (e) => {
-    if (!picker.open || picker.busy) return;
+    if (!picker.open) return;
     const path = e.composedPath();
     if (!path.includes(picker.host) && !path.includes(picker.anchor)) closePicker();
   }, true);
@@ -514,5 +638,8 @@
   };
   window.addEventListener('scroll', queuePlace, { capture: true, passive: true });
   window.addEventListener('resize', queuePlace, { passive: true });
-  window.addEventListener('yt-navigate-start', () => { if (!picker.busy) closePicker(); });
+  window.addEventListener('yt-navigate-start', () => {
+    closePicker();
+    for (const [box, att] of attachments) if (!att.posting) detach(box, false);
+  });
 })();
